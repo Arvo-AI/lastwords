@@ -15,16 +15,32 @@ jobs:
       - run: test -z "$(gofmt -l .)"
       - run: go vet ./...
       - run: go test -race ./...
-      # Tag runs can only restore caches saved on main, so compile every
-      # release target here (same flags as goreleaser); releases then reuse it.
-      - name: Warm the release build cache
-        if: github.event_name == 'push'
+      - uses: azure/setup-helm@v4
+      - run: helm lint deploy/helm/lastwords
+  release-cache:
+    # Tag runs can only restore caches saved on main. setup-go's cache key only
+    # changes with go.sum, so it never re-saves; this job saves a build cache
+    # for every release target under a per-commit key that releases restore.
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.26.10', cache: false}
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-release-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-release-${{ hashFiles('go.sum') }}-
+            go-release-
+      - name: Compile every release target (same flags as goreleaser)
         run: |
           for t in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do
             CGO_ENABLED=0 GOOS=${t%/*} GOARCH=${t#*/} go build -trimpath -o /dev/null ./cmd/lastwords
           done
-      - uses: azure/setup-helm@v4
-      - run: helm lint deploy/helm/lastwords
   e2e:
     # A real Linux host: core_pattern is node-wide here, so the segfaulting
     # demo produces a real core dump.
