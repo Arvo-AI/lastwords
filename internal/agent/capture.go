@@ -761,7 +761,12 @@ func (a *Agent) captureCore(ctx context.Context, metaPath string) {
 	if m.Truncated {
 		c.Findings = append(c.Findings, fmt.Sprintf("The core was cut at %s (coreDumps.maxBytes). Stack traces usually still work; full memory inspection may not.", procfs.Bytes(uint64(m.CoreBytes))))
 	}
-	c.Findings = append(c.Findings, fmt.Sprintf("%s (%s) crashed with %s. Open the core with gdb or lldb using the same binary from image %s.", m.Comm, m.Exe, core.SignalName(m.Signal), c.Image))
+	// comm is cut at 15 characters by the kernel; the executable path is not.
+	name := m.Comm
+	if m.Exe != "" {
+		name = filepath.Base(m.Exe)
+	}
+	c.Findings = append(c.Findings, fmt.Sprintf("%s crashed with %s. For the stack, copy %s out of image %s (same tag) and run: gunzip core.gz && gdb -batch -ex bt %s core", name, core.SignalName(m.Signal), nz(m.Exe, name), c.Image, name))
 	if prior, err := a.Store.List(store.Filter{ContainerID: m.ContainerID}); err == nil {
 		for _, p := range prior {
 			c.Related = append(c.Related, p.ID)

@@ -1,0 +1,89 @@
+apiVersion: krew.googlecontainertools.github.com/v1alpha2
+kind: Plugin
+metadata:
+  name: lastwords
+spec:
+  version: v0.1.1
+  homepage: https://github.com/Arvo-AI/lastwords
+  shortDescription: Read what a container was doing right before it was OOMKilled or crashed
+  description: |
+    Reads the captures taken by the lastwords DaemonSet: Java heap histograms and Go
+    heap profiles from before an OOM kill, crash logs and core dumps matched to the pod.
+    Requires the lastwords Helm chart in the cluster.
+
+      kubectl lastwords list -n <namespace>
+      kubectl lastwords show <capture-id>
+      kubectl lastwords top
+  platforms:
+  - selector:
+      matchLabels:
+        os: darwin
+        arch: arm64
+    uri: https://github.com/Arvo-AI/lastwords/releases/download/v0.1.1/lastwords_Darwin_arm64.tar.gz
+    sha256: 106a7f3c0e3e2acdfb6c15df221bb88b1d1679ec91f722314309948aa9a18932
+    bin: lastwords
+    files:
+      - from: lastwords
+        to: .
+      - from: LICENSE
+        to: .
+  - selector:
+      matchLabels:
+        os: darwin
+        arch: amd64
+    uri: https://github.com/Arvo-AI/lastwords/releases/download/v0.1.1/lastwords_Darwin_x86_64.tar.gz
+    sha256: 2b84d88354a45c09da2c7ec2f730de36eb03889bef2398eaa0fc55a3755195c7
+    bin: lastwords
+    files:
+      - from: lastwords
+        to: .
+      - from: LICENSE
+        to: .
+  - selector:
+      matchLabels:
+        os: linux
+        arch: arm64
+    uri: https://github.com/Arvo-AI/lastwords/releases/download/v0.1.1/lastwords_Linux_arm64.tar.gz
+    sha256: bb890b7623fb5dd27135dae347ac928b89f380dbeb620388702654a672141984
+    bin: lastwords
+    files:
+      - from: lastwords
+        to: .
+      - from: LICENSE
+        to: .
+  - selector:
+      matchLabels:
+        os: linux
+        arch: amd64
+    uri: https://github.com/Arvo-AI/lastwords/releases/download/v0.1.1/lastwords_Linux_x86_64.tar.gz
+    sha256: b45166e1b0c33bb2d168ee12d0529e2ae4622e96c30c4ecd64c5247bd303bdf7
+    bin: lastwords
+    files:
+      - from: lastwords
+        to: .
+      - from: LICENSE
+        to: .
+  - selector:
+      matchLabels:
+        os: windows
+        arch: arm64
+    uri: https://github.com/Arvo-AI/lastwords/releases/download/v0.1.1/lastwords_Windows_arm64.zip
+    sha256: 14d81d0dce75c885aa802acd7ecf45d535be6720d54ca383e71b319f92968608
+    bin: lastwords.exe
+    files:
+      - from: lastwords.exe
+        to: .
+      - from: LICENSE
+        to: .
+  - selector:
+      matchLabels:
+        os: windows
+        arch: amd64
+    uri: https://github.com/Arvo-AI/lastwords/releases/download/v0.1.1/lastwords_Windows_x86_64.zip
+    sha256: 4daf7e62fabfca479096cb7d53a56c3eed3de8f60c43bfbcbf4b293bb58a18b2
+    bin: lastwords.exe
+    files:
+      - from: lastwords.exe
+        to: .
+      - from: LICENSE
+        to: .

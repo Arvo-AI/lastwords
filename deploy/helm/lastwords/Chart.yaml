@@ -15,3 +15,13 @@ maintainers:
 annotations:
   artifacthub.io/category: monitoring-logging
   artifacthub.io/license: Apache-2.0
+  artifacthub.io/operator: "false"
+  artifacthub.io/containsSecurityUpdates: "false"
+  artifacthub.io/images: |
+    - name: lastwords
+      image: ghcr.io/arvo-ai/lastwords:v0.1.1
+  artifacthub.io/links: |
+    - name: Guides
+      url: https://github.com/Arvo-AI/lastwords/tree/main/docs/guides
+    - name: Security model
+      url: https://github.com/Arvo-AI/lastwords/blob/main/docs/security.md

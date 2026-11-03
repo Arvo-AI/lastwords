@@ -76,6 +76,16 @@ sudo mv lastwords /usr/local/bin/ && sudo ln -sf /usr/local/bin/lastwords /usr/l
 
 The CLI talks to the agents through the Kubernetes API server, so it needs nothing but your kubeconfig.
 
+## Guides
+
+Measured on EKS with the failures in this repo; every command and output is from a real run.
+
+- [Get a Java heap histogram before Kubernetes OOMKills the pod](docs/guides/java-heap-before-oomkill.md)
+- [Why -XX:+HeapDumpOnOutOfMemoryError never writes a file in Kubernetes](docs/guides/heapdumponoutofmemoryerror-kubernetes.md)
+- [Java pod OOMKilled at 80% of its memory limit](docs/guides/jvm-oomkilled-below-limit.md)
+- [Get core dumps from crashing Kubernetes pods](docs/guides/kubernetes-core-dumps.md)
+- [Find what is leaking in a Go pod before it is OOMKilled](docs/guides/go-oomkilled-pprof.md)
+
 ## Let your AI agent read it
 
 lastwords ships an MCP server. Claude Code, Codex, Cursor and any MCP client can list and read captures:

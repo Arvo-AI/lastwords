@@ -1,0 +1,48 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.arvo-ai/lastwords",
+  "title": "lastwords",
+  "description": "Heap histograms, Go profiles, crash logs and core dumps from Kubernetes pods before they died.",
+  "repository": {
+    "url": "https://github.com/Arvo-AI/lastwords",
+    "source": "github"
+  },
+  "websiteUrl": "https://github.com/Arvo-AI/lastwords",
+  "version": "0.1.2",
+  "packages": [
+    {
+      "registryType": "oci",
+      "identifier": "ghcr.io/arvo-ai/lastwords:v0.1.2",
+      "transport": {
+        "type": "stdio"
+      },
+      "runtimeHint": "docker",
+      "runtimeArguments": [
+        {
+          "type": "named",
+          "name": "-v",
+          "value": "{kube_dir}:/kube:ro",
+          "isRequired": true,
+          "variables": {
+            "kube_dir": {
+              "description": "Directory holding your kubeconfig, e.g. ~/.kube",
+              "isRequired": true
+            }
+          }
+        },
+        {
+          "type": "named",
+          "name": "-e",
+          "value": "KUBECONFIG=/kube/config",
+          "isRequired": true
+        }
+      ],
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        }
+      ]
+    }
+  ]
+}
