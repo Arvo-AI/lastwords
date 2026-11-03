@@ -137,11 +137,11 @@ func (a *Agent) collectJVM(ctx context.Context, w *store.Writer, pid int, pod *c
 	defer cl.Close()
 	var secs []section
 	gone := false
-	alive := func() bool {
+	alive := func(cmd string, cause error) bool {
 		if !gone {
 			if _, err := os.Stat(filepath.Join(a.cfg.ProcDir, strconv.Itoa(pid))); err != nil {
 				gone = true
-				w.Errorf("the JVM exited during the capture (most likely the OOM kill itself); the remaining JVM commands were skipped")
+				w.Errorf("the JVM exited during the capture (most likely the OOM kill itself); jcmd %s failed with %v and the remaining JVM commands were skipped", cmd, cause)
 			}
 		}
 		return !gone
@@ -156,11 +156,11 @@ func (a *Agent) collectJVM(ctx context.Context, w *store.Writer, pid int, pod *c
 		}
 		out, err := cl.Jcmd(ctx, cmd)
 		if err != nil || out == "" {
-			if !alive() {
-				return ""
-			}
 			if err == nil {
 				err = errors.New("empty response")
+			}
+			if !alive(cmd, err) {
+				return ""
 			}
 			w.Errorf("jcmd %s: %v", cmd, err)
 			if out == "" {
@@ -170,12 +170,17 @@ func (a *Agent) collectJVM(ctx context.Context, w *store.Writer, pid int, pod *c
 		w.WriteFile(file, desc, []byte(out))
 		return out
 	}
-	run("GC.heap_info", "jvm-heap-info.txt", "JVM heap regions and usage (jcmd GC.heap_info)")
+	// The histogram is the most useful output, so it goes first, while the JVM
+	// is most likely still alive. -all skips the full GC the default form
+	// forces: on a JVM near its container limit that GC needs extra memory
+	// (live young objects are copied into the old generation) and the capture
+	// itself would trigger the OOM kill. Leaked objects are reachable, so
+	// counting unreachable ones too does not hide them.
 	if a.cfg.JVMHistogram {
-		out := run("GC.class_histogram", "jvm-class-histogram.txt", "Live objects by class after a full GC (jcmd GC.class_histogram)")
+		out := run("GC.class_histogram -all", "jvm-class-histogram.txt", "Objects on the heap by class, without forcing a GC (jcmd GC.class_histogram -all)")
 		if entries, total := jvm.ParseHistogram(out); len(entries) > 0 {
 			var b strings.Builder
-			fmt.Fprintf(&b, "Live heap after full GC: %s across %d classes.\n\n", procfs.Bytes(total), len(entries))
+			fmt.Fprintf(&b, "Java heap: %s across %d classes (counted without forcing a GC, so it can include garbage not yet collected).\n\n", procfs.Bytes(total), len(entries))
 			b.WriteString("| Class | Bytes | Share | Instances |\n|---|---:|---:|---:|\n")
 			for i, e := range entries {
 				if i == 10 {
@@ -201,6 +206,7 @@ func (a *Agent) collectJVM(ctx context.Context, w *store.Writer, pid int, pod *c
 			}
 		}
 	}
+	run("GC.heap_info", "jvm-heap-info.txt", "JVM heap regions and usage (jcmd GC.heap_info)")
 	if a.cfg.JVMNativeMemory && ctx.Err() == nil && !gone {
 		out, err := cl.Jcmd(ctx, "VM.native_memory summary")
 		if err == nil && !strings.Contains(out, "not enabled") {

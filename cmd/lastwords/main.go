@@ -141,6 +141,7 @@ func runAgent(args []string) error {
 	fs.Float64Var(&cfg.LastGasp, "last-gasp", cfg.LastGasp, "second capture at this fraction (0 disables)")
 	fs.BoolVar(&cfg.Predictive, "predictive", cfg.Predictive, "capture early when the limit will be hit within --predict-seconds")
 	fs.Float64Var(&cfg.PredictSecs, "predict-seconds", cfg.PredictSecs, "seconds-to-limit that triggers an early capture")
+	fs.Float64Var(&cfg.JVMGCHeadroom, "jvm-gc-headroom", cfg.JVMGCHeadroom, "share of the limit a JVM needs free for its next GC; JVM capture tiers are measured against limit*(1-headroom) (0 disables)")
 	fs.DurationVar(&cfg.History, "history", cfg.History, "memory timeline kept per container")
 	fs.DurationVar(&cfg.CaptureTimeout, "capture-timeout", cfg.CaptureTimeout, "time budget per capture")
 	fs.BoolVar(&cfg.JVMThreadDump, "jvm-thread-dump", cfg.JVMThreadDump, "include Java thread dumps")

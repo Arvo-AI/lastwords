@@ -13,6 +13,7 @@ import (
 	"github.com/Arvo-AI/lastwords/internal/cgroup"
 	"github.com/Arvo-AI/lastwords/internal/core"
 	"github.com/Arvo-AI/lastwords/internal/k8s"
+	"github.com/Arvo-AI/lastwords/internal/procfs"
 	"github.com/Arvo-AI/lastwords/internal/store"
 )
 
@@ -28,6 +29,7 @@ type tracked struct {
 	last      cgroup.Stats
 	oomKills  uint64
 	tiers     map[string]bool // capture tiers already taken for this container instance
+	runtime   procfs.Runtime  // main process runtime, detected once memory gets interesting
 	captureMu sync.Mutex
 	goneAt    time.Time // when the cgroup disappeared (kept for death timelines)
 }
@@ -266,7 +268,18 @@ func (a *Agent) sampleAll(ctx context.Context, now time.Time) {
 		if st.Limit == 0 {
 			continue
 		}
-		tier := a.evaluate(pod, st, growth)
+		// Detect the runtime once per container instance, and only when it
+		// starts to matter: it reads /proc of every process in the cgroup.
+		if t.runtime == "" && st.Ratio() >= runtimeProbeRatio {
+			rt := procfs.Runtime("unknown")
+			if main := procfs.Largest(a.processes(t.dir)); main != nil {
+				rt = main.Runtime
+			}
+			a.mu.Lock()
+			t.runtime = rt
+			a.mu.Unlock()
+		}
+		tier := a.evaluate(pod, st, growth, t.runtime == procfs.RuntimeJVM)
 		if tier == "" {
 			continue
 		}
@@ -283,16 +296,25 @@ func (a *Agent) sampleAll(ctx context.Context, now time.Time) {
 	}
 }
 
+// runtimeProbeRatio is the share of the limit at which a container's runtime
+// is detected. It must be low enough for the JVM tiers to still be ahead.
+const runtimeProbeRatio = 0.40
+
 // evaluate decides whether this sample should trigger a capture and returns
-// the tier name ("threshold" or "last-gasp"), or "".
-func (a *Agent) evaluate(pod *corev1.Pod, st cgroup.Stats, growth float64) string {
+// the tier name ("threshold" or "last-gasp"), or "". For JVMs the tiers are
+// measured against the point where the next GC would hit the limit.
+func (a *Agent) evaluate(pod *corev1.Pod, st cgroup.Stats, growth float64, jvm bool) string {
 	threshold := a.cfg.Threshold
 	if pod != nil {
 		if v, err := strconv.ParseFloat(pod.Annotations[k8s.AnnoThreshold], 64); err == nil && v > 0 && v < 1 {
 			threshold = v
 		}
 	}
-	ratio := st.Ratio()
+	limit, ws := float64(st.Limit), float64(st.WorkingSet())
+	if jvm && a.cfg.JVMGCHeadroom > 0 && a.cfg.JVMGCHeadroom < 1 {
+		limit *= 1 - a.cfg.JVMGCHeadroom
+	}
+	ratio := ws / limit
 	if a.cfg.LastGasp > 0 && ratio >= a.cfg.LastGasp {
 		return "last-gasp"
 	}
@@ -300,9 +322,8 @@ func (a *Agent) evaluate(pod *corev1.Pod, st cgroup.Stats, growth float64) strin
 		return "threshold"
 	}
 	if a.cfg.Predictive && ratio >= a.cfg.PredictMin {
-		if growth > 0 && st.Limit > st.WorkingSet() {
-			secs := float64(st.Limit-st.WorkingSet()) / growth
-			if secs < a.cfg.PredictSecs {
+		if growth > 0 && limit > ws {
+			if secs := (limit - ws) / growth; secs < a.cfg.PredictSecs {
 				return "threshold"
 			}
 		}

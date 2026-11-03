@@ -174,6 +174,12 @@ func (w *Watcher) upsert(old, p *corev1.Pod) {
 			if t.ExitCode == 0 && t.Reason == "Completed" {
 				continue
 			}
+			// A pod being deleted (rollout, scale-down, drain) was asked to
+			// stop: its exit is a shutdown, not a crash. An OOM kill while
+			// shutting down is still worth reporting.
+			if i == 1 && p.DeletionTimestamp != nil && t.Reason != "OOMKilled" {
+				continue
+			}
 			deaths = append(deaths, TerminationEvent{Pod: p, Container: cs.Name, ContainerID: id, Restarts: cs.RestartCount, Attempt: attempt, State: *t})
 		}
 	}

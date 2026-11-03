@@ -20,7 +20,13 @@ type Config struct {
 	Predictive  bool          // capture early if the limit will be hit within PredictWindow
 	PredictMin  float64       // only predict above this ratio
 	PredictSecs float64       // seconds-to-limit that counts as imminent
-	History     time.Duration // memory timeline kept per container
+	// JVMGCHeadroom is the share of the limit kept free for a JVM's next GC.
+	// A young collection copies live objects into the old generation, so a
+	// JVM whose -Xmx exceeds its limit is killed at roughly 1 - headroom of
+	// the limit, not at 100%. Capture tiers for JVMs are measured against
+	// that lower point.
+	JVMGCHeadroom float64
+	History       time.Duration // memory timeline kept per container
 
 	CaptureTimeout   time.Duration
 	MaxConcurrent    int
@@ -76,6 +82,7 @@ func Defaults() Config {
 		Predictive:        true,
 		PredictMin:        0.70,
 		PredictSecs:       15,
+		JVMGCHeadroom:     0.25,
 		History:           10 * time.Minute,
 		CaptureTimeout:    60 * time.Second,
 		MaxConcurrent:     2,

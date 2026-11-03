@@ -107,6 +107,7 @@ Common settings (see [values.yaml](deploy/helm/lastwords/values.yaml) for all):
 | `capture.threshold` | `0.90` | Capture at this share of the memory limit (working set, like the kubelet) |
 | `capture.lastGasp` | `0.97` | Second capture right before the kill |
 | `capture.predictive` | `true` | Capture early if the limit will be hit within `predictSeconds` |
+| `capture.jvmGCHeadroom` | `0.25` | JVMs are usually killed by a GC at ~75-80% of the limit, so their tiers aim below it |
 | `capture.heapDumps` | `false` | Full Java heap dumps for every JVM. Pods can opt in with the `lastwords.dev/heap-dump: "true"` annotation |
 | `capture.goPprofPort` | `6060` | Where Go programs serve `net/http/pprof` |
 | `coreDumps.enabled` | `false` | Capture core dumps (sets the node's `kernel.core_pattern`, needs a privileged agent) |

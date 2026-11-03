@@ -15,6 +15,8 @@ A capture fires once per container instance per tier:
 - **threshold**: working set ≥ 90% of the limit, or ≥ 70% and a least-squares slope over the last 10 s says the limit will be hit within 15 s
 - **last-gasp**: working set ≥ 97%
 
+JVMs are measured against 75% of the limit instead (`capture.jvmGCHeadroom: 0.25`). A JVM whose `-Xmx` is above its container limit is not killed at 100%: a young GC copies the live objects in eden into the old generation, memory jumps by roughly a quarter of the heap in a fraction of a second, and the kernel kills it. On EKS the demo JVM climbed steadily to 80% and was dead 0.1 s later at 96%. The runtime is detected once per container when it passes 40% of its limit.
+
 Captures run outside the sampling loop, two at a time per node, with a 60 s budget.
 
 ### What a pressure capture contains
@@ -25,7 +27,7 @@ Captures run outside the sampling loop, two at a time per node, with a 60 s budg
 | `processes.txt` | Every process in the container: RSS, peak RSS, threads, `smaps_rollup`, redacted command line |
 | `timeline.csv` | The container's working set for the last 10 minutes |
 | `jvm-heap-info.txt` | `jcmd GC.heap_info` |
-| `jvm-class-histogram.txt` | `jcmd GC.class_histogram` (live objects after a full GC) |
+| `jvm-class-histogram.txt` | `jcmd GC.class_histogram -all` (objects by class, no forced GC) |
 | `jvm-native-memory.txt` | `jcmd VM.native_memory summary` (when the JVM runs with `-XX:NativeMemoryTracking=summary`) |
 | `jvm-threads.txt` | `jcmd Thread.print` |
 | `heap.hprof.gz` | `jcmd GC.heap_dump -gz=1`, only when allowed |
@@ -43,7 +45,7 @@ lastwords implements the HotSpot Dynamic Attach protocol, the same one `jcmd` an
 
 Nothing is installed in your image and the JVM needs no flags. `-XX:+DisableAttachMechanism` turns this off, and lastwords records that it could not attach.
 
-`GC.class_histogram` runs a full GC, which pauses the JVM. On a multi-GB heap that can take a second or more. It happens once per container instance per tier, when the container is about to be killed anyway.
+`GC.class_histogram -all` walks the heap without forcing a GC. The default form runs a full GC first, and on a JVM close to its container limit that GC needs extra memory and can trigger the very OOM kill being captured. The walk still pauses the JVM briefly (a second or more on a multi-GB heap), once per container instance per tier. Because nothing is collected first, the counts can include garbage; leaked objects are reachable, so they still lead the list.
 
 ## Deaths
 

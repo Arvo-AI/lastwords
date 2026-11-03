@@ -37,6 +37,7 @@ spec:
             - --last-gasp={{ .Values.capture.lastGasp }}
             - --predictive={{ .Values.capture.predictive }}
             - --predict-seconds={{ .Values.capture.predictSeconds }}
+            - --jvm-gc-headroom={{ .Values.capture.jvmGCHeadroom }}
             - --interval={{ .Values.capture.interval }}
             - --history={{ .Values.capture.history }}
             - --jvm-thread-dump={{ .Values.capture.jvmThreadDump }}

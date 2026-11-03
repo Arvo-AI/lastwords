@@ -67,3 +67,29 @@ func TestStartupSkipsOldDeaths(t *testing.T) {
 		t.Fatal("a death from before the agent started should not be captured")
 	}
 }
+
+// A rollout restart SIGTERMs the old pod; its exit 143 is a shutdown, not a
+// crash. An OOM kill while it shuts down is still a real death.
+func TestDeletingPodShutdownIsNotACrash(t *testing.T) {
+	for _, tc := range []struct {
+		reason string
+		code   int32
+		want   int
+	}{{"Error", 143, 0}, {"OOMKilled", 137, 1}} {
+		w := NewWatcher(fake.NewClientset(), "node-1")
+		deaths := 0
+		w.OnDeath = func(TerminationEvent) { deaths++ }
+		running := crashLoopPod(0)
+		w.upsert(nil, running)
+		stopping := crashLoopPod(0)
+		now := metav1.Now()
+		stopping.DeletionTimestamp = &now
+		stopping.Status.ContainerStatuses[0].State = corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{
+			ContainerID: running.Status.ContainerStatuses[0].ContainerID, ExitCode: tc.code, Reason: tc.reason, FinishedAt: now,
+		}}
+		w.upsert(running, stopping)
+		if deaths != tc.want {
+			t.Errorf("%s during deletion: %d deaths reported, want %d", tc.reason, deaths, tc.want)
+		}
+	}
+}
