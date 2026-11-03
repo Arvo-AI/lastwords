@@ -1,6 +1,6 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.arvo-ai/lastwords",
+  "name": "io.github.Arvo-AI/lastwords",
   "title": "lastwords",
   "description": "Heap histograms, Go profiles, crash logs and core dumps from Kubernetes pods before they died.",
   "repository": {

@@ -1,7 +1,7 @@
 name: mcp-registry
 # Publishes deploy/distribution/server.json to registry.modelcontextprotocol.io
 # for each release. GitHub OIDC proves the run belongs to Arvo-AI, which owns
-# the io.github.arvo-ai namespace; no secret is stored.
+# the io.github.Arvo-AI namespace (case-sensitive); no secret is stored.
 on:
   workflow_run:
     workflows: [release]
@@ -21,8 +21,9 @@ jobs:
       PUBLISHER: v1.8.7
       PUBLISHER_SHA256: 00b21004149a4ce66f0782508ae4a2bce67d1bea395a8da0bd8028159fb59579
     steps:
+      # server.json comes from main (metadata fixes need no new tag); only the
+      # version and image tag come from the release.
       - uses: actions/checkout@v4
-        with: {ref: "${{ env.TAG }}"}
       - name: Install mcp-publisher
         run: |
           curl -sSLo p.tgz "https://github.com/modelcontextprotocol/registry/releases/download/$PUBLISHER/mcp-publisher_linux_amd64.tar.gz"

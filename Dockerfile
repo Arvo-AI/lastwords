@@ -13,7 +13,7 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
 # core dump helper, so it must not depend on anything in this image.
 FROM gcr.io/distroless/static-debian12:nonroot
 # Lets the MCP registry verify that this image belongs to the listed server.
-LABEL io.modelcontextprotocol.server.name="io.github.arvo-ai/lastwords"
+LABEL io.modelcontextprotocol.server.name="io.github.Arvo-AI/lastwords"
 LABEL org.opencontainers.image.source="https://github.com/Arvo-AI/lastwords"
 COPY --from=build /out/lastwords /usr/local/bin/lastwords
 USER 0:0
