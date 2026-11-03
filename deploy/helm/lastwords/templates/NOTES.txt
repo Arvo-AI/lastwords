@@ -1,0 +1,18 @@
+lastwords is running on every node in {{ .Release.Namespace }}.
+
+It captures evidence when containers approach their memory limit (>= {{ mulf .Values.capture.threshold 100 | int }}%), get OOMKilled, crash{{ if .Values.coreDumps.enabled }}, dump core{{ end }}, or are evicted.
+
+Read captures:
+  kubectl lastwords list                # install the CLI: see https://github.com/Arvo-AI/lastwords#cli
+  kubectl lastwords show <id>
+
+Let your AI agent read them:
+  claude mcp add lastwords -- kubectl-lastwords mcp
+  codex mcp add lastwords -- kubectl-lastwords mcp
+
+Grant read access to other people with the {{ include "lastwords.fullname" . }}-reader Role:
+  kubectl -n {{ .Release.Namespace }} create rolebinding lastwords-readers --role={{ include "lastwords.fullname" . }}-reader --group=<group>
+{{- if not .Values.coreDumps.enabled }}
+
+Core dumps are off. Turn them on with --set coreDumps.enabled=true (needs a privileged agent).
+{{- end }}

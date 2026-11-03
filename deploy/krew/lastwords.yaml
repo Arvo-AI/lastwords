@@ -1,0 +1,32 @@
+# Krew plugin manifest template. The release process fills in VERSION and the
+# sha256 of each archive before submitting to krew-index.
+apiVersion: krew.googlecontainertools.github.com/v1alpha2
+kind: Plugin
+metadata:
+  name: lastwords
+spec:
+  version: VERSION
+  homepage: https://github.com/Arvo-AI/lastwords
+  shortDescription: Read why pods were OOMKilled, crashed or dumped core
+  description: |
+    Lists and reads evidence saved by the lastwords DaemonSet when containers
+    approach their memory limit, get OOMKilled, crash, dump core or are
+    evicted: memory snapshots taken before the kill, logs of the dead
+    instance, events and core dumps. Also serves it to AI agents over MCP.
+  platforms:
+    - selector: {matchLabels: {os: linux, arch: amd64}}
+      uri: https://github.com/Arvo-AI/lastwords/releases/download/VERSION/lastwords_Linux_x86_64.tar.gz
+      sha256: SHA_LINUX_AMD64
+      bin: lastwords
+    - selector: {matchLabels: {os: linux, arch: arm64}}
+      uri: https://github.com/Arvo-AI/lastwords/releases/download/VERSION/lastwords_Linux_arm64.tar.gz
+      sha256: SHA_LINUX_ARM64
+      bin: lastwords
+    - selector: {matchLabels: {os: darwin, arch: amd64}}
+      uri: https://github.com/Arvo-AI/lastwords/releases/download/VERSION/lastwords_Darwin_x86_64.tar.gz
+      sha256: SHA_DARWIN_AMD64
+      bin: lastwords
+    - selector: {matchLabels: {os: darwin, arch: arm64}}
+      uri: https://github.com/Arvo-AI/lastwords/releases/download/VERSION/lastwords_Darwin_arm64.tar.gz
+      sha256: SHA_DARWIN_ARM64
+      bin: lastwords

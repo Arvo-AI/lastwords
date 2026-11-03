@@ -1,0 +1,11 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: lastwords
+nodes:
+  - role: control-plane
+    extraMounts:
+      # The kernel runs the core dump helper in the Docker VM's root mount
+      # namespace, not the kind node's. Share one directory between both so the
+      # helper path in core_pattern exists for the kernel and for the agent.
+      - hostPath: /var/lib/lastwords-kind
+        containerPath: /var/lib/lastwords

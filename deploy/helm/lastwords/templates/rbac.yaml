@@ -1,0 +1,53 @@
+{{- if .Values.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "lastwords.fullname" . }}
+  labels: {{- include "lastwords.labels" . | nindent 4 }}
+rules:
+  # Map containers on the node to pods, and notice OOM kills / crashes / evictions.
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, list, watch]
+  # Save the pod's events into captures before they expire, and record our own.
+  - apiGroups: [""]
+    resources: [events]
+    verbs: [list, create, patch]
+  - apiGroups: [events.k8s.io]
+    resources: [events]
+    verbs: [create, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "lastwords.fullname" . }}
+  labels: {{- include "lastwords.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "lastwords.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "lastwords.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+---
+# Who may read captures: anyone bound to this role in the lastwords namespace.
+# The CLI and MCP server need it (list agent pods, use the pod proxy, read the API token).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "lastwords.fullname" . }}-reader
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "lastwords.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [list]
+  - apiGroups: [""]
+    resources: [pods/proxy]
+    verbs: [get]
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [lastwords-api]
+    verbs: [get]
+{{- end }}

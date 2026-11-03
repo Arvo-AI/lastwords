@@ -1,0 +1,151 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "lastwords.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "lastwords.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels: {{- include "lastwords.selector" . | nindent 6 }}
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 25%
+  template:
+    metadata:
+      labels:
+        {{- include "lastwords.selector" . | nindent 8 }}
+        {{- with .Values.podLabels }}{{ toYaml . | nindent 8 }}{{ end }}
+      annotations:
+        lastwords.dev/ignore: "true"
+        {{- with .Values.podAnnotations }}{{ toYaml . | nindent 8 }}{{ end }}
+    spec:
+      serviceAccountName: {{ include "lastwords.serviceAccountName" . }}
+      # Host PIDs: read /proc of other containers' processes and attach to JVMs.
+      hostPID: true
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      terminationGracePeriodSeconds: 15
+      containers:
+        - name: agent
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - agent
+            - --threshold={{ .Values.capture.threshold }}
+            - --last-gasp={{ .Values.capture.lastGasp }}
+            - --predictive={{ .Values.capture.predictive }}
+            - --predict-seconds={{ .Values.capture.predictSeconds }}
+            - --interval={{ .Values.capture.interval }}
+            - --history={{ .Values.capture.history }}
+            - --jvm-thread-dump={{ .Values.capture.jvmThreadDump }}
+            - --heap-dumps={{ .Values.capture.heapDumps }}
+            - --heap-dump-max-bytes={{ int64 .Values.capture.heapDumpMaxBytes }}
+            - --go-pprof-port={{ .Values.capture.goPprofPort }}
+            - --logs={{ .Values.capture.logs }}
+            - --log-lines={{ .Values.capture.logLines }}
+            - --core-dumps={{ .Values.coreDumps.enabled }}
+            - --core-max-bytes={{ int64 .Values.coreDumps.maxBytes }}
+            - --restore-core-pattern={{ .Values.coreDumps.restoreOnExit }}
+            # The data dir as the node's kernel sees it (the helper path in core_pattern).
+            - --core-host-dir={{ .Values.coreDumps.hostDir | default .Values.storage.hostPath }}
+            - --data-dir=/var/lib/lastwords
+            - --max-store-bytes={{ int64 .Values.storage.maxBytes }}
+            - --max-age={{ .Values.storage.maxAge }}
+            - --notify-kinds={{ join "," .Values.notifications.kinds }}
+            - --namespaces={{ join "," .Values.namespaces }}
+            - --ignore-namespaces={{ join "," .Values.ignoreNamespaces }}
+            - --log-level={{ .Values.logLevel }}
+            {{- with .Values.s3.bucket }}
+            - --s3-bucket={{ . }}
+            - --s3-prefix={{ $.Values.s3.prefix }}
+            - --s3-region={{ $.Values.s3.region }}
+            - --s3-endpoint={{ $.Values.s3.endpoint }}
+            - --s3-insecure={{ $.Values.s3.insecure }}
+            {{- end }}
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: LASTWORDS_CLUSTER
+              value: {{ .Values.clusterName | quote }}
+            - name: LASTWORDS_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: lastwords-api
+                  key: token
+            {{- if .Values.notifications.existingSecret }}
+            - name: LASTWORDS_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef: {name: {{ .Values.notifications.existingSecret }}, key: webhookUrl, optional: true}
+            - name: LASTWORDS_SLACK_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef: {name: {{ .Values.notifications.existingSecret }}, key: slackWebhookUrl, optional: true}
+            {{- else }}
+            - name: LASTWORDS_WEBHOOK_URL
+              value: {{ .Values.notifications.webhookUrl | quote }}
+            - name: LASTWORDS_SLACK_WEBHOOK_URL
+              value: {{ .Values.notifications.slackWebhookUrl | quote }}
+            {{- end }}
+          {{- with .Values.s3.credentialsSecret }}
+          envFrom:
+            - secretRef:
+                name: {{ . }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: 9095
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 30
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            readOnlyRootFilesystem: true
+            runAsUser: 0
+            {{- if .Values.coreDumps.enabled }}
+            # Writing kernel.core_pattern needs a privileged container.
+            privileged: true
+            {{- else }}
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+              add:
+                - SYS_PTRACE      # read other processes' /proc (smaps, maps, exe)
+                - DAC_READ_SEARCH # read files owned by other users
+                - DAC_OVERRIDE    # create the JVM attach trigger in the target's /tmp
+                - CHOWN           # hand the attach trigger to the JVM's user
+                - FOWNER
+                - KILL            # send SIGQUIT to start the JVM attach listener
+            {{- end }}
+          volumeMounts:
+            - name: cgroup
+              mountPath: /host/sys/fs/cgroup
+              readOnly: true
+            - name: pod-logs
+              mountPath: /var/log/pods
+              readOnly: true
+            - name: data
+              mountPath: /var/lib/lastwords
+      volumes:
+        - name: cgroup
+          hostPath: {path: /sys/fs/cgroup}
+        - name: pod-logs
+          hostPath: {path: /var/log/pods}
+        - name: data
+          hostPath:
+            path: {{ .Values.storage.hostPath }}
+            type: DirectoryOrCreate
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}

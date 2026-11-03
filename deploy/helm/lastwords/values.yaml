@@ -1,0 +1,116 @@
+# Default values for lastwords.
+
+image:
+  repository: ghcr.io/arvo-ai/lastwords
+  tag: ""          # defaults to the chart appVersion
+  pullPolicy: IfNotPresent
+
+# Name used in notifications and S3 paths.
+clusterName: ""
+
+capture:
+  # Capture when a container's working set reaches this share of its memory limit.
+  threshold: 0.90
+  # A second, last-moment capture. 0 disables.
+  lastGasp: 0.97
+  # Capture early when memory is climbing fast enough to hit the limit within predictSeconds.
+  predictive: true
+  predictSeconds: 15
+  # Memory sampling interval and how much history each capture includes.
+  interval: 500ms
+  history: 10m
+  # Java: thread dumps are included; full heap dumps are opt-in because they
+  # contain whatever was in memory (tokens, PII). Pods can opt in with the
+  # annotation lastwords.dev/heap-dump: "true".
+  jvmThreadDump: true
+  heapDumps: false
+  # Gzipped heap dumps larger than this are dropped (bytes).
+  heapDumpMaxBytes: 2147483648
+  # Go: port of net/http/pprof. Pods can override with lastwords.dev/pprof-port.
+  goPprofPort: 6060
+  # Save the log tail of every container that dies (OOMKilled, crash, signal).
+  logs: true
+  logLines: 500
+
+# Core dumps for crashing processes (SIGSEGV, SIGABRT, ...). This sets the
+# node's kernel.core_pattern, which requires a privileged agent.
+coreDumps:
+  enabled: false
+  maxBytes: 2147483648
+  # The data directory as the node's kernel sees it. Defaults to
+  # storage.hostPath; only set it on nested setups such as kind. The kernel
+  # must be able to execute files there: if your node OS mounts the path
+  # noexec, move storage.hostPath to an executable location.
+  hostDir: ""
+  restoreOnExit: true
+
+storage:
+  hostPath: /var/lib/lastwords
+  maxBytes: 5368709120   # per node
+  maxAge: 168h
+
+# Upload every capture to S3-compatible storage (AWS S3, GCS interoperability, MinIO).
+# Credentials: IRSA / EKS Pod Identity via serviceAccount.annotations, or an
+# existing secret with AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY.
+s3:
+  bucket: ""
+  prefix: lastwords
+  region: ""
+  endpoint: ""
+  insecure: false
+  credentialsSecret: ""
+
+notifications:
+  # POST each capture as JSON (works with Aurora, n8n, Zapier, your own service).
+  webhookUrl: ""
+  # Slack incoming webhook.
+  slackWebhookUrl: ""
+  # Or read both from an existing secret with keys webhookUrl / slackWebhookUrl.
+  existingSecret: ""
+  kinds: [pressure, oomkill, process-oomkill, crash, coredump, evicted]
+
+# Only watch these namespaces (empty = all) and never watch these.
+namespaces: []
+ignoreNamespaces: [kube-system]
+
+logLevel: info
+
+api:
+  # The agents' API token lives in the Secret "lastwords-api" (key "token"),
+  # which the CLI and MCP server also read. By default the chart creates it
+  # with a random token and keeps it across upgrades. Argo CD, Flux and
+  # `helm template` cannot look up the existing Secret, so they would make a
+  # new token on every sync: set this to false there and create the Secret
+  # yourself, e.g.
+  #   kubectl -n lastwords create secret generic lastwords-api --from-literal=token=$(openssl rand -hex 20)
+  createSecret: true
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+rbac:
+  create: true
+
+podAnnotations: {}
+podLabels: {}
+priorityClassName: ""
+nodeSelector: {}
+affinity: {}
+# Run on every node, including tainted ones.
+tolerations:
+  - operator: Exists
+
+resources:
+  requests:
+    cpu: 20m
+    memory: 48Mi
+  limits:
+    memory: 256Mi
+
+metrics:
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    labels: {}

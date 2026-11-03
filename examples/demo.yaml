@@ -1,0 +1,67 @@
+# Four workloads that fail in the ways lastwords is built for.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: shop
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: checkout, namespace: shop}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: checkout}}
+  template:
+    metadata: {labels: {app: checkout}}
+    spec:
+      containers:
+        - name: checkout
+          image: lastwords-demo/leaky-java:dev
+          imagePullPolicy: IfNotPresent
+          resources: {requests: {memory: 256Mi}, limits: {memory: 384Mi}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: billing-api, namespace: shop}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: billing-api}}
+  template:
+    metadata:
+      labels: {app: billing-api}
+      annotations: {lastwords.dev/pprof-port: "6060"}
+    spec:
+      containers:
+        - name: billing-api
+          image: lastwords-demo/leaky-go:dev
+          imagePullPolicy: IfNotPresent
+          resources: {requests: {memory: 128Mi}, limits: {memory: 256Mi}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: thumbnail-worker, namespace: shop}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: thumbnail-worker}}
+  template:
+    metadata: {labels: {app: thumbnail-worker}}
+    spec:
+      containers:
+        - name: worker
+          image: lastwords-demo/segfault:dev
+          imagePullPolicy: IfNotPresent
+          resources: {limits: {memory: 64Mi}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: order-consumer, namespace: shop}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: order-consumer}}
+  template:
+    metadata: {labels: {app: order-consumer}}
+    spec:
+      containers:
+        - name: consumer
+          image: lastwords-demo/panic:dev
+          imagePullPolicy: IfNotPresent
+          resources: {limits: {memory: 64Mi}}

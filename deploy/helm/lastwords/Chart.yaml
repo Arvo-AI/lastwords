@@ -1,0 +1,17 @@
+apiVersion: v2
+name: lastwords
+description: Saves what a container was doing right before Kubernetes killed it. Memory snapshots before OOM kills, crash logs, core dumps, evictions. Queryable by kubectl and by AI agents over MCP.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/Arvo-AI/lastwords
+icon: https://raw.githubusercontent.com/Arvo-AI/lastwords/main/assets/logo.svg
+sources:
+  - https://github.com/Arvo-AI/lastwords
+keywords: [kubernetes, oomkilled, oom, heap-dump, core-dump, crashloopbackoff, debugging, mcp, sre]
+maintainers:
+  - name: Arvo AI
+    url: https://www.aurorasre.ai
+annotations:
+  artifacthub.io/category: monitoring-logging
+  artifacthub.io/license: Apache-2.0

@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "lastwords.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "lastwords.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  selector: {{- include "lastwords.selector" . | nindent 4 }}
+  ports:
+    - name: http
+      port: 9095
+      targetPort: http
+---
+{{- if .Values.metrics.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "lastwords.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "lastwords.labels" . | nindent 4 }}
+    {{- with .Values.metrics.serviceMonitor.labels }}{{ toYaml . | nindent 4 }}{{ end }}
+spec:
+  selector:
+    matchLabels: {{- include "lastwords.selector" . | nindent 6 }}
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: {{ .Values.metrics.serviceMonitor.interval }}
+{{- end }}
