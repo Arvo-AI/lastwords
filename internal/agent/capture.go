@@ -178,9 +178,14 @@ func (a *Agent) collectJVM(ctx context.Context, w *store.Writer, pid int, pod *c
 	// counting unreachable ones too does not hide them.
 	if a.cfg.JVMHistogram {
 		out := run("GC.class_histogram -all", "jvm-class-histogram.txt", "Objects on the heap by class, without forcing a GC (jcmd GC.class_histogram -all)")
-		if entries, total := jvm.ParseHistogram(out); len(entries) > 0 {
+		entries, total := jvm.ParseHistogram(out)
+		entries, filler := jvm.DropFillers(entries)
+		if filler <= total {
+			total -= filler
+		}
+		if len(entries) > 0 {
 			var b strings.Builder
-			fmt.Fprintf(&b, "Java heap: %s across %d classes (counted without forcing a GC, so it can include garbage not yet collected).\n\n", procfs.Bytes(total), len(entries))
+			fmt.Fprintf(&b, "Java heap: %s across %d classes (counted without forcing a GC, so it can include garbage not yet collected; collector filler space is left out).\n\n", procfs.Bytes(total), len(entries))
 			b.WriteString("| Class | Bytes | Share | Instances |\n|---|---:|---:|---:|\n")
 			for i, e := range entries {
 				if i == 10 {
@@ -202,7 +207,11 @@ func (a *Agent) collectJVM(ctx context.Context, w *store.Writer, pid int, pod *c
 			}
 			top := entries[0]
 			if total > 0 && float64(top.Bytes)/float64(total) > 0.4 {
-				w.C.Findings = append(w.C.Findings, fmt.Sprintf("One class dominates the Java heap: %s holds %s (%.0f%%) in %d instances.", top.Class, procfs.Bytes(top.Bytes), 100*float64(top.Bytes)/float64(total), top.Instances))
+				f := fmt.Sprintf("One class dominates the Java heap: %s holds %s (%.0f%%) in %d instances.", top.Class, procfs.Bytes(top.Bytes), 100*float64(top.Bytes)/float64(total), top.Instances)
+				if h, ok := jvm.Holder(entries, top); ok && h.Class != top.Class {
+					f += fmt.Sprintf(" %s has almost the same number of instances (%d), so each one most likely holds one %s: %s is what keeps this memory alive.", h.Class, h.Instances, top.Class, h.Class)
+				}
+				w.C.Findings = append(w.C.Findings, f)
 			}
 		}
 	}
@@ -513,6 +522,9 @@ func (a *Agent) captureDeath(ctx context.Context, ev k8s.TerminationEvent) {
 			}
 		}
 	}
+	if ev.Init {
+		c.Findings = append(c.Findings, "This is an init container: the pod's main containers do not start until it exits 0, so the whole pod is down while it fails.")
+	}
 	c.Findings = append(c.Findings, deathFindings(c, samples, limit, logText, snapshots)...)
 	if kind == store.KindOOMKill {
 		c.Findings = append(c.Findings, a.snapshotFindings(c.Related)...)
@@ -561,6 +573,9 @@ func deathFindings(c *store.Capture, samples []Sample, limit uint64, logText str
 			out = append(out, fmt.Sprintf("The process exited with code %d.", t.ExitCode))
 		}
 	}
+	if f := runtimeOOM(logText, c.Memory, limit); f != "" {
+		out = append(out, f)
+	}
 	if site := logs.CrashSite(logText); site != "" {
 		out = append(out, "Crashed in "+site+".")
 	}
@@ -574,6 +589,35 @@ func deathFindings(c *store.Capture, samples []Sample, limit uint64, logText str
 		}
 	}
 	return out
+}
+
+// runtimeOOM explains an out-of-memory error raised by the language runtime
+// itself. These kill the process at the runtime's own limit (-Xmx, V8's old
+// space), usually well below the container limit, so raising the container
+// limit alone does not help.
+func runtimeOOM(logText string, m *store.Memory, limit uint64) string {
+	usage := ""
+	if m != nil && limit > 0 {
+		usage = fmt.Sprintf(" The container was using %s of its %s limit, so this is the runtime's own cap, not the container's.", procfs.Bytes(m.WorkingSetBytes), procfs.Bytes(limit))
+	}
+	switch {
+	case strings.Contains(logText, "java.lang.OutOfMemoryError: Java heap space"),
+		strings.Contains(logText, "java.lang.OutOfMemoryError: GC overhead limit exceeded"):
+		return "The JVM ran out of Java heap (its -Xmx or MaxRAMPercentage), not container memory." + usage + " Raise the heap only if the load is real; to see what filled it, add -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath= pointing at a volume that survives the restart."
+	case strings.Contains(logText, "java.lang.OutOfMemoryError: Metaspace"):
+		return "The JVM ran out of Metaspace (class metadata): usually classes generated or loaded in a loop (proxies, scripting, redeploys), or -XX:MaxMetaspaceSize set too low."
+	case strings.Contains(logText, "java.lang.OutOfMemoryError: Direct buffer memory"):
+		return "The JVM ran out of direct (off-heap) buffer memory, set by -XX:MaxDirectMemorySize: typically Netty or NIO buffers that are not released."
+	case strings.Contains(logText, "unable to create native thread"):
+		return "The JVM could not start another thread: a thread leak, or the pod's pids limit was reached. The thread count in earlier captures shows which."
+	case strings.Contains(logText, "JavaScript heap out of memory"):
+		return "Node.js hit V8's old-space limit (--max-old-space-size, which defaults from the container limit)." + usage + " Retained objects are the cause; start node with --heapsnapshot-near-heap-limit=2 to get a heap snapshot next time."
+	case strings.Contains(logText, "fatal error: runtime: out of memory"):
+		return "The Go runtime could not get more memory from the OS (GOMEMLIMIT, ulimit or overcommit), before the container limit was reached."
+	case strings.Contains(logText, "MemoryError"):
+		return "Python raised MemoryError: an allocation failed (ulimit, or a single huge allocation) before the kernel OOM killer stepped in."
+	}
+	return ""
 }
 
 func lastLines(text string, n int) []string {

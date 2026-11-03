@@ -70,7 +70,11 @@ func render(c *store.Capture, samples []Sample, secs []section) string {
 	}
 	if m := c.Memory; m != nil {
 		b.WriteString("\n## Memory\n\n")
-		fmt.Fprintf(&b, "- Working set %s of %s limit (%.0f%%); total usage incl. reclaimable cache %s\n", procfs.Bytes(m.WorkingSetBytes), limitStr(m.LimitBytes), 100*m.Ratio, procfs.Bytes(m.UsageBytes))
+		if m.LimitBytes > 0 {
+			fmt.Fprintf(&b, "- Working set %s of %s limit (%.0f%%); total usage incl. reclaimable cache %s\n", procfs.Bytes(m.WorkingSetBytes), limitStr(m.LimitBytes), 100*m.Ratio, procfs.Bytes(m.UsageBytes))
+		} else {
+			fmt.Fprintf(&b, "- Working set %s (no memory limit); total usage incl. reclaimable cache %s\n", procfs.Bytes(m.WorkingSetBytes), procfs.Bytes(m.UsageBytes))
+		}
 		if m.GrowthBytesPerS != 0 {
 			fmt.Fprintf(&b, "- Growth over the last 10 s: %s/s", signedBytes(m.GrowthBytesPerS))
 			if m.SecondsToLimit >= 1 {

@@ -230,3 +230,48 @@ func AppClasses(entries []HistogramEntry, n int) []HistogramEntry {
 	}
 	return out
 }
+
+// DropFillers removes the filler objects G1 and other collectors put in
+// unused heap space (jdk.internal.vm.FillerElement[] / FillerArray). They are
+// dead space, not objects anyone allocated, and only show up because the
+// histogram is taken without a GC. It returns the entries left and the bytes
+// removed.
+func DropFillers(entries []HistogramEntry) ([]HistogramEntry, uint64) {
+	out := entries[:0:0]
+	var dropped uint64
+	for _, e := range entries {
+		if strings.HasPrefix(e.Class, "jdk.internal.vm.Filler") {
+			dropped += e.Bytes
+			continue
+		}
+		out = append(out, e)
+	}
+	return out, dropped
+}
+
+// Holder guesses which application class holds the instances of a JDK class
+// such as long[] or byte[]: one whose instance count matches it one to one,
+// the shape of "each Posting has a long[]". A shallow histogram counts the
+// array's bytes under the array, so without this the leaking class looks
+// small. It needs enough instances for the match not to be a coincidence.
+func Holder(entries []HistogramEntry, of HistogramEntry) (HistogramEntry, bool) {
+	var best HistogramEntry
+	bestDiff := 1.0
+	for _, e := range AppClasses(entries, 20) {
+		if e.Instances < 1000 || of.Instances < 1000 {
+			continue
+		}
+		r := float64(of.Instances) / float64(e.Instances)
+		if d := r - 1; d >= -0.05 && d <= 0.10 && abs(d) < bestDiff {
+			best, bestDiff = e, abs(d)
+		}
+	}
+	return best, bestDiff < 1
+}
+
+func abs(f float64) float64 {
+	if f < 0 {
+		return -f
+	}
+	return f
+}

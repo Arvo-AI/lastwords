@@ -50,6 +50,7 @@ type TerminationEvent struct {
 	Restarts    int32
 	Attempt     int32 // kubelet attempt number of the dead instance (its log is <attempt>.log)
 	State       corev1.ContainerStateTerminated
+	Init        bool // an init container: the pod's main containers never started
 }
 
 // Watcher keeps an index of pods on one node.
@@ -108,6 +109,17 @@ func TrimID(id string) string {
 		return id[i+3:]
 	}
 	return id
+}
+
+// blockingInit reports whether name is an init container that has to finish
+// before the pod starts (native sidecars, restartPolicy Always, do not block).
+func blockingInit(p *corev1.Pod, name string) bool {
+	for _, c := range p.Spec.InitContainers {
+		if c.Name == name {
+			return c.RestartPolicy == nil || *c.RestartPolicy != corev1.ContainerRestartPolicyAlways
+		}
+	}
+	return false
 }
 
 func allStatuses(p *corev1.Pod) []corev1.ContainerStatus {
@@ -180,7 +192,12 @@ func (w *Watcher) upsert(old, p *corev1.Pod) {
 			if i == 1 && p.DeletionTimestamp != nil && t.Reason != "OOMKilled" {
 				continue
 			}
-			deaths = append(deaths, TerminationEvent{Pod: p, Container: cs.Name, ContainerID: id, Restarts: cs.RestartCount, Attempt: attempt, State: *t})
+			// The kubelet kills the containers of a pod it evicts; the
+			// eviction capture already has their logs and the reason.
+			if p.Status.Reason == "Evicted" && t.Reason != "OOMKilled" {
+				continue
+			}
+			deaths = append(deaths, TerminationEvent{Pod: p, Container: cs.Name, ContainerID: id, Restarts: cs.RestartCount, Attempt: attempt, State: *t, Init: blockingInit(p, cs.Name)})
 		}
 	}
 	evicted := p.Status.Reason == "Evicted" && (old == nil || old.Status.Reason != "Evicted")

@@ -1,0 +1,202 @@
+# Failure modes beyond the four demos, all built from public images so they
+# run on any cluster: kubectl apply -f test/e2e/scenarios.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: edge
+---
+# A worker process is OOM-killed but the container survives (its parent keeps
+# running): lastwords reports a process-oomkill.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: report-runner, namespace: edge}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: report-runner}}
+  template:
+    metadata: {labels: {app: report-runner}}
+    spec:
+      containers:
+        - name: runner
+          image: python:3.12-slim
+          command: ["sh", "-c"]
+          args:
+            - |
+              while true; do
+                python3 -c 'b=[]
+              while True: b.append(bytearray(4<<20))' || echo "report job died with $?"
+                sleep 20
+              done
+          resources: {limits: {memory: 128Mi}}
+---
+# Java with -Xmx below the limit: the JVM throws OutOfMemoryError and exits 1,
+# no kernel OOM kill involved.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: pricing, namespace: edge}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: pricing}}
+  template:
+    metadata: {labels: {app: pricing}}
+    spec:
+      containers:
+        - name: pricing
+          image: eclipse-temurin:21-jdk
+          command: ["sh", "-c"]
+          args:
+            - |
+              mkdir -p /tmp/src && cat > /tmp/src/PriceCache.java <<'EOF'
+              import java.util.*;
+              public class PriceCache {
+                record Quote(String sku, double[] history) {}
+                public static void main(String[] a) throws Exception {
+                  Map<String, Quote> cache = new HashMap<>();
+                  for (long n = 0;; n++) {
+                    cache.put("sku-" + n, new Quote("sku-" + n, new double[4096]));
+                    if (n % 200 == 0) Thread.sleep(50);
+                  }
+                }
+              }
+              EOF
+              exec java -Xmx96m /tmp/src/PriceCache.java
+          resources: {limits: {memory: 512Mi}}
+---
+# G1 (2 CPUs, > 1792 MiB) with -Xmx above the limit: kernel OOM kill.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: search-indexer, namespace: edge}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: search-indexer}}
+  template:
+    metadata: {labels: {app: search-indexer}}
+    spec:
+      containers:
+        - name: indexer
+          image: eclipse-temurin:21-jdk
+          command: ["sh", "-c"]
+          args:
+            - |
+              mkdir -p /tmp/src && cat > /tmp/src/Indexer.java <<'EOF'
+              import java.util.*;
+              public class Indexer {
+                static final class Posting { final String term; final long[] docs; Posting(String t) { term = t; docs = new long[2048]; } }
+                public static void main(String[] a) throws Exception {
+                  List<Posting> segment = new ArrayList<>();
+                  Thread.sleep(15000);
+                  for (long n = 0;; n++) {
+                    segment.add(new Posting("t" + n));
+                    if (n % 100 == 0) Thread.sleep(20);
+                  }
+                }
+              }
+              EOF
+              exec java -Xmx4g -XX:+UseG1GC /tmp/src/Indexer.java
+          resources: {requests: {cpu: "1"}, limits: {cpu: "2", memory: 2Gi}}
+---
+# Python service leaking into a dict until the kernel OOM-kills it.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: session-api, namespace: edge}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: session-api}}
+  template:
+    metadata: {labels: {app: session-api}}
+    spec:
+      containers:
+        - name: api
+          image: python:3.12-slim
+          command: ["python3", "-u", "-c"]
+          args:
+            - |
+              import time
+              sessions = {}
+              n = 0
+              time.sleep(10)
+              while True:
+                  sessions[n] = "x" * 200_000
+                  n += 1
+                  if n % 50 == 0:
+                      print(f"{n} sessions", flush=True)
+                      time.sleep(0.2)
+          resources: {limits: {memory: 192Mi}}
+---
+# Node.js: V8 sizes its heap from the container limit and aborts with
+# "JavaScript heap out of memory" (SIGABRT), usually before the kernel kills it.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: web-bff, namespace: edge}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: web-bff}}
+  template:
+    metadata: {labels: {app: web-bff}}
+    spec:
+      containers:
+        - name: bff
+          image: node:22-slim
+          command: ["node", "-e"]
+          args:
+            - |
+              const cache = new Map(); let n = 0;
+              setTimeout(function grow() {
+                for (let i = 0; i < 2000; i++) cache.set(n++, { id: n, body: "y".repeat(1000) });
+                setTimeout(grow, 10);
+              }, 10000);
+          resources: {limits: {memory: 256Mi}}
+---
+# The leak is in the app container; the sidecar must not be blamed.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: cart, namespace: edge}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: cart}}
+  template:
+    metadata: {labels: {app: cart}}
+    spec:
+      containers:
+        - name: proxy
+          image: nginx:1.27-alpine
+          resources: {limits: {memory: 64Mi}}
+        - name: app
+          image: python:3.12-slim
+          command: ["python3", "-c"]
+          args: ["import time\nb=[]\ntime.sleep(10)\nwhile True:\n  b.append(bytearray(2<<20)); time.sleep(0.1)"]
+          resources: {limits: {memory: 160Mi}}
+---
+# An init container that fails: the pod never starts.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: migrator, namespace: edge}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: migrator}}
+  template:
+    metadata: {labels: {app: migrator}}
+    spec:
+      initContainers:
+        - name: migrate
+          image: busybox:1.37
+          command: ["sh", "-c", "echo 'applying 0042_add_index'; echo 'ERROR: relation \"orders\" does not exist' >&2; exit 3"]
+      containers:
+        - name: app
+          image: busybox:1.37
+          command: ["sleep", "infinity"]
+---
+# Fills an emptyDir past its sizeLimit: the kubelet evicts the pod.
+apiVersion: v1
+kind: Pod
+metadata: {name: log-shipper, namespace: edge}
+spec:
+  restartPolicy: Never
+  containers:
+    - name: shipper
+      image: busybox:1.37
+      command: ["sh", "-c", "sleep 10; dd if=/dev/zero of=/buffer/spool bs=1M count=200; sleep 600"]
+      volumeMounts: [{name: buffer, mountPath: /buffer}]
+  volumes:
+    - name: buffer
+      emptyDir: {sizeLimit: 50Mi}
