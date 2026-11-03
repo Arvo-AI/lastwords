@@ -2,11 +2,11 @@
 
 | Where | How | Status |
 |---|---|---|
-| krew index | PR adding `plugins/lastwords.yaml` (from `krew-lastwords.yaml`) to kubernetes-sigs/krew-index | draft |
+| krew index | kubernetes-sigs/krew-index#6580 | open, waiting on CNCF CLA + maintainer review |
 | Artifact Hub | Repository `lastwords` (oci://ghcr.io/arvo-ai/charts/lastwords) | listed 2026-11-03 |
-| MCP registry | `mcp-publisher login github` then `mcp-publisher publish` with `server.json` (needs an image built with the `io.modelcontextprotocol.server.name` label, v0.1.3+) | to do |
-| awesome-kubernetes | One line under Monitoring / Debugging | draft |
-| awesome-mcp-servers | One line under Cloud Platforms / Monitoring | draft |
+| MCP registry | `io.github.Arvo-AI/lastwords`, published by `.github/workflows/mcp-registry.yaml` after each release (GitHub OIDC) | listed 2026-11-03 (0.1.4) |
+| awesome-kubernetes | One line under Monitoring / Debugging | waiting: list requires 25+ stars and 3+ contributors |
+| awesome-mcp-servers | One line under Monitoring, with Glama score badge | waiting on the Glama listing |
 
 Line for awesome lists (disclose that we build it in the PR body):
 
