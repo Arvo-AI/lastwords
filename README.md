@@ -127,7 +127,7 @@ Pod annotations:
 
 ## How it works
 
-A DaemonSet runs one small agent per node (a static Go binary; requests 20m CPU and 48 MiB).
+A DaemonSet runs one small agent per node (a static Go binary; requests 20m CPU and 48 MiB). Measured on EKS (t3.large, Amazon Linux 2023): 8m CPU and 12 MiB on a quiet node, 20m CPU and 15 MiB with 35 containers, about 0.5m CPU per container watched.
 
 1. It reads every container's memory accounting from the node's cgroup tree twice a second (`memory.current`, `memory.stat`, `memory.events`, PSI), computes the working set the way the kubelet does, and keeps a 10-minute timeline.
 2. When a container crosses the threshold, or is climbing fast enough to hit its limit within 15 seconds, it collects evidence while the process is still alive. For the JVM it uses the HotSpot attach protocol (what `jcmd` uses) from outside the container; nothing is installed in your images. For Go it pulls `/debug/pprof/heap`.

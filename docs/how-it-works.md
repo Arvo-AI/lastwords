@@ -59,7 +59,7 @@ The pod informer reports each container whose `lastState.terminated` (or `state.
 
 Crash loops are bounded: the first 3 crashes of a container per 30 minutes are captured. Later ones are counted in `lastwords_crashes_suppressed_total`.
 
-A process OOM-killed inside a container that keeps running (a worker or child process) only shows up as an increase of `oom_kill` in `memory.events`. Kubernetes never reports it. lastwords captures it as `process-oomkill`.
+A process OOM-killed inside a container that keeps running (a worker or child process) only shows up as an increase of `oom_kill` in `memory.events`. Kubernetes never reports it. lastwords captures it as `process-oomkill`. On cgroup v2 nodes with Kubernetes 1.28 or later the kubelet sets `memory.oom.group`, so the kernel kills every process in the container together and you get an ordinary `oomkill` instead; `process-oomkill` only appears on cgroup v1 nodes or with the kubelet's `singleProcessOOMKill: true` (1.32+). On EKS 1.33 a child process running out of memory took its whole container down.
 
 ## Core dumps
 
