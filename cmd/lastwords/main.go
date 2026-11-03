@@ -417,11 +417,7 @@ func runMCP(args []string) error {
 	fs := flag.NewFlagSet("mcp", flag.ExitOnError)
 	mk := clientFlags(fs)
 	parse(fs, args)
-	c, err := mk()
-	if err != nil {
-		return err
-	}
 	ctx, cancel := signalContext()
 	defer cancel()
-	return mcpserver.Run(ctx, c, agent.Version)
+	return mcpserver.Run(ctx, mk, agent.Version)
 }

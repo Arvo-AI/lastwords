@@ -4,7 +4,7 @@
 |---|---|---|
 | krew index | PR adding `plugins/lastwords.yaml` (from `krew-lastwords.yaml`) to kubernetes-sigs/krew-index | draft |
 | Artifact Hub | Add repository: kind Helm, URL `oci://ghcr.io/arvo-ai/charts/lastwords` (needs an Artifact Hub login) | to do |
-| MCP registry | `mcp-publisher login github` then `mcp-publisher publish` with `server.json` (needs an image built with the `io.modelcontextprotocol.server.name` label, v0.1.2+) | to do |
+| MCP registry | `mcp-publisher login github` then `mcp-publisher publish` with `server.json` (needs an image built with the `io.modelcontextprotocol.server.name` label, v0.1.3+) | to do |
 | awesome-kubernetes | One line under Monitoring / Debugging | draft |
 | awesome-mcp-servers | One line under Cloud Platforms / Monitoring | draft |
 

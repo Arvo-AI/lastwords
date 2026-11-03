@@ -2,8 +2,8 @@ apiVersion: v2
 name: lastwords
 description: Saves what a container was doing right before Kubernetes killed it. Memory snapshots before OOM kills, crash logs, core dumps, evictions. Queryable by kubectl and by AI agents over MCP.
 type: application
-version: 0.1.2
-appVersion: v0.1.2
+version: 0.1.3
+appVersion: v0.1.3
 home: https://github.com/Arvo-AI/lastwords
 icon: https://raw.githubusercontent.com/Arvo-AI/lastwords/main/assets/logo.svg
 sources:
@@ -19,7 +19,7 @@ annotations:
   artifacthub.io/containsSecurityUpdates: "false"
   artifacthub.io/images: |
     - name: lastwords
-      image: ghcr.io/arvo-ai/lastwords:v0.1.2
+      image: ghcr.io/arvo-ai/lastwords:v0.1.3
   artifacthub.io/links: |
     - name: Guides
       url: https://github.com/Arvo-AI/lastwords/tree/main/docs/guides
