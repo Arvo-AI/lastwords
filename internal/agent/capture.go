@@ -201,7 +201,7 @@ func (a *Agent) collectJVM(ctx context.Context, w *store.Writer, pid int, pod *c
 			if app := jvm.AppClasses(entries, 3); len(app) > 0 {
 				var parts []string
 				for _, e := range app {
-					parts = append(parts, fmt.Sprintf("%s: %d instances, %s in total", e.Class, e.Instances, procfs.Bytes(e.Bytes)))
+					parts = append(parts, fmt.Sprintf("%s: %s, %s in total", e.Class, plural(int(e.Instances), "instance"), procfs.Bytes(e.Bytes)))
 				}
 				w.C.Findings = append(w.C.Findings, "Largest application classes on the heap: "+strings.Join(parts, "; ")+". Sizes are shallow: arrays and strings these objects point to are counted under byte[], String, etc. A large instance count here usually names the leaking cache or collection.")
 			}
@@ -532,7 +532,7 @@ func (a *Agent) captureDeath(ctx context.Context, ev k8s.TerminationEvent) {
 	if prior == maxCrashCaptures-1 {
 		c.Findings = append(c.Findings, fmt.Sprintf("This container is crash-looping: this is crash capture %d in %s. Further crashes in that window are counted but not captured.", maxCrashCaptures, crashWindow))
 	}
-	c.Headline = headlineDeath(c, limit)
+	c.Headline = headlineDeath(c, limit, snapshots)
 	id := c.ID
 	a.finish(ctx, w, render(c, samples, nil))
 	for _, r := range c.Related {
@@ -559,7 +559,11 @@ func deathFindings(c *store.Capture, samples []Sample, limit uint64, logText str
 			}
 		}
 		if snapshots > 0 {
-			out = append(out, fmt.Sprintf("%d snapshot(s) of what was using the memory were taken before the kill; see Related captures.", snapshots))
+			verb := "were"
+			if snapshots == 1 {
+				verb = "was"
+			}
+			out = append(out, fmt.Sprintf("%s of what was using the memory %s taken before the kill; see Related captures.", plural(snapshots, "snapshot"), verb))
 		} else {
 			out = append(out, "No snapshot was taken before the kill: memory went from below the threshold to the limit between samples, or the agent was not watching yet. The timeline and logs are still saved.")
 		}

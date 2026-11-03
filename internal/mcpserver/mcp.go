@@ -165,7 +165,11 @@ func Register(s *mcp.Server, c *client.Client) {
 				}
 			}
 			if it.OOMKills > 0 {
-				fmt.Fprintf(&b, ", %d OOM kill(s) in this container instance", it.OOMKills)
+				if it.OOMKills == 1 {
+					b.WriteString(", 1 OOM kill in this container instance")
+				} else {
+					fmt.Fprintf(&b, ", %d OOM kills in this container instance", it.OOMKills)
+				}
 			}
 			b.WriteString("\n")
 		}

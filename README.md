@@ -40,14 +40,13 @@ None of it can be recovered later. It has to be collected while the container is
 Every capture comes with a `summary.md` that says what happened in plain words:
 
 ```
-# checkout-576cc8d588-cw9gs/checkout was OOMKilled at 03:07:12 UTC (limit 384.0 MiB); 2 snapshot(s) taken before the kill
+# checkout-5498f94695-526hm/checkout was OOMKilled at 16:51:38 UTC (limit 384.0 MiB); 1 snapshot taken before the kill
 
 ## What lastwords found
-- Memory rose from 38.2 MiB to 366.3 MiB over 1m3s (5.2 MiB/s) before the kill.
-- The growth looks steady rather than a single spike, which points to a leak or unbounded cache.
-- Before the kill (79% of limit): Largest application classes on the heap:
+- Memory climbed steadily for 1m1s, the pattern of a leak or an unbounded cache. Raising the limit would only delay the next kill.
+- Before the kill (67% of limit): Largest application classes on the heap:
   com.example.checkout.CheckoutService$CartSnapshot: 2860 instances ...
-- Before the kill (79% of limit): One class dominates the Java heap: byte[] holds 179.2 MiB (99%).
+- Before the kill (67% of limit): One class dominates the Java heap: byte[] holds 179.2 MiB (97%).
 ```
 
 ```
@@ -124,6 +123,14 @@ Pod annotations:
 | `lastwords.dev/threshold: "0.8"` | Per-pod capture threshold |
 | `lastwords.dev/heap-dump: "true"` | Allow a full heap dump for this pod |
 | `lastwords.dev/pprof-port: "8080"` | Go pprof port |
+
+## Uninstall
+
+```sh
+helm uninstall lastwords -n lastwords
+```
+
+On shutdown the agent puts the node's original `core_pattern` back (checked on EKS: `systemd-coredump` again after uninstall). Captures and the core helper binary stay in `/var/lib/lastwords` on each node, so a reinstall keeps your history, and a node whose agent was killed before it could restore `core_pattern` still has a working helper to hand cores to. Delete that directory on the nodes to remove everything.
 
 ## How it works
 

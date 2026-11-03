@@ -33,7 +33,7 @@ func headlinePressure(c *store.Capture) string {
 	return h
 }
 
-func headlineDeath(c *store.Capture, limit uint64) string {
+func headlineDeath(c *store.Capture, limit uint64, snapshots int) string {
 	t := c.Termination
 	when := t.FinishedAt.UTC().Format("15:04:05 UTC")
 	if t.Reason == "OOMKilled" {
@@ -41,8 +41,8 @@ func headlineDeath(c *store.Capture, limit uint64) string {
 		if limit > 0 {
 			h += fmt.Sprintf(" (limit %s)", procfs.Bytes(limit))
 		}
-		if n := countSnapshots(c.Findings); n > 0 {
-			h += fmt.Sprintf("; %d snapshot(s) taken before the kill", n)
+		if snapshots > 0 {
+			h += fmt.Sprintf("; %s taken before the kill", plural(snapshots, "snapshot"))
 		}
 		return h
 	}
@@ -137,15 +137,12 @@ func render(c *store.Capture, samples []Sample, secs []section) string {
 	return b.String()
 }
 
-// countSnapshots reads the snapshot count back from the findings text.
-func countSnapshots(findings []string) int {
-	for _, f := range findings {
-		var n int
-		if _, err := fmt.Sscanf(f, "%d snapshot(s) of what was using the memory", &n); err == nil {
-			return n
-		}
+// plural formats a count with its noun: "1 snapshot", "2 snapshots".
+func plural(n int, noun string) string {
+	if n == 1 {
+		return "1 " + noun
 	}
-	return 0
+	return fmt.Sprintf("%d %ss", n, noun)
 }
 
 func limitStr(n uint64) string {
