@@ -9,8 +9,10 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Arvo-AI/lastwords/internal/store"
+	"github.com/Arvo-AI/lastwords/webhook"
 )
 
 func TestWebhookAndSlackPayloads(t *testing.T) {
@@ -48,5 +50,31 @@ func TestNotifyKindsFilter(t *testing.T) {
 	n.Send(context.Background(), &store.Capture{Kind: store.KindPressure}, "")
 	if called {
 		t.Fatal("pressure captures should not notify when only oomkill is selected")
+	}
+}
+
+// A receiver holding the secret can verify a delivery with webhook.Verify;
+// the Slack post carries no signature (Slack would ignore it).
+func TestWebhookDeliveriesAreSigned(t *testing.T) {
+	type got struct {
+		ts, sig string
+		body    []byte
+	}
+	reqs := map[string]got{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		reqs[r.URL.Path] = got{r.Header.Get(webhook.TimestampHeader), r.Header.Get(webhook.SignatureHeader), b}
+	}))
+	defer srv.Close()
+	cfg := Defaults()
+	cfg.WebhookURL, cfg.SlackWebhookURL, cfg.WebhookSecret = srv.URL+"/hook", srv.URL+"/slack", "s3cret"
+	n := newNotifier(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	n.Send(context.Background(), &store.Capture{ID: "x", Kind: store.KindCrash, Headline: "h"}, "# s")
+	h := reqs["/hook"]
+	if err := webhook.Verify("s3cret", h.ts, h.sig, h.body, time.Now(), time.Minute); err != nil {
+		t.Fatalf("delivery does not verify: %v", err)
+	}
+	if s := reqs["/slack"]; s.sig != "" {
+		t.Fatal("slack post should not be signed")
 	}
 }

@@ -37,7 +37,10 @@ spec:
             - --last-gasp={{ .Values.capture.lastGasp }}
             - --predictive={{ .Values.capture.predictive }}
             - --predict-seconds={{ .Values.capture.predictSeconds }}
+            {{- /* Values added after 0.1.0 are optional: helm upgrade --reuse-values keeps the old values, and an empty flag would stop the agent. */}}
+            {{- if hasKey .Values.capture "jvmGCHeadroom" }}
             - --jvm-gc-headroom={{ .Values.capture.jvmGCHeadroom }}
+            {{- end }}
             - --interval={{ .Values.capture.interval }}
             - --history={{ .Values.capture.history }}
             - --jvm-thread-dump={{ .Values.capture.jvmThreadDump }}
@@ -84,11 +87,16 @@ spec:
             - name: LASTWORDS_SLACK_WEBHOOK_URL
               valueFrom:
                 secretKeyRef: {name: {{ .Values.notifications.existingSecret }}, key: slackWebhookUrl, optional: true}
+            - name: LASTWORDS_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef: {name: {{ .Values.notifications.existingSecret }}, key: webhookSecret, optional: true}
             {{- else }}
             - name: LASTWORDS_WEBHOOK_URL
               value: {{ .Values.notifications.webhookUrl | quote }}
             - name: LASTWORDS_SLACK_WEBHOOK_URL
               value: {{ .Values.notifications.slackWebhookUrl | quote }}
+            - name: LASTWORDS_WEBHOOK_SECRET
+              value: {{ .Values.notifications.webhookSecret | quote }}
             {{- end }}
           {{- with .Values.s3.credentialsSecret }}
           envFrom:

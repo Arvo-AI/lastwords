@@ -67,9 +67,12 @@ s3:
 notifications:
   # POST each capture as JSON (works with Aurora, n8n, Zapier, your own service).
   webhookUrl: ""
+  # Signs each webhook delivery: X-Lastwords-Timestamp and
+  # X-Lastwords-Signature: sha256=HMAC-SHA256(secret, "<timestamp>.<body>").
+  webhookSecret: ""
   # Slack incoming webhook.
   slackWebhookUrl: ""
-  # Or read both from an existing secret with keys webhookUrl / slackWebhookUrl.
+  # Or read them from an existing secret with keys webhookUrl, webhookSecret, slackWebhookUrl.
   existingSecret: ""
   kinds: [pressure, oomkill, process-oomkill, crash, coredump, evicted]
 

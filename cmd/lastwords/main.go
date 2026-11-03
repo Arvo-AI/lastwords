@@ -158,6 +158,7 @@ func runAgent(args []string) error {
 	fs.DurationVar(&cfg.MaxAge, "max-age", cfg.MaxAge, "delete captures older than this")
 	fs.StringVar(&cfg.ListenAddr, "listen", cfg.ListenAddr, "API and metrics address")
 	fs.StringVar(&cfg.WebhookURL, "webhook-url", env("LASTWORDS_WEBHOOK_URL", ""), "POST every capture as JSON to this URL")
+	fs.StringVar(&cfg.WebhookSecret, "webhook-secret", env("LASTWORDS_WEBHOOK_SECRET", ""), "sign webhook deliveries with HMAC-SHA256 (X-Lastwords-Signature)")
 	fs.StringVar(&cfg.SlackWebhookURL, "slack-webhook-url", env("LASTWORDS_SLACK_WEBHOOK_URL", ""), "post captures to this Slack incoming webhook")
 	notify := fs.String("notify-kinds", strings.Join(cfg.NotifyKinds, ","), "capture kinds that trigger notifications")
 	fs.StringVar(&cfg.S3.Bucket, "s3-bucket", "", "upload captures to this bucket (S3, GCS interop, MinIO)")

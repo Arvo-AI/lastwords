@@ -92,8 +92,24 @@ Then ask: *"the checkout pods restarted overnight, why?"* Tools: `lastwords_list
 ```sh
 helm upgrade lastwords oci://ghcr.io/arvo-ai/charts/lastwords -n lastwords --reuse-values \
   --set notifications.slackWebhookUrl=https://hooks.slack.com/services/... \
-  --set notifications.webhookUrl=https://your-service/lastwords
+  --set notifications.webhookUrl=https://your-service/lastwords \
+  --set notifications.webhookSecret=$(openssl rand -hex 32)
 ```
+
+With a secret set, every webhook delivery is signed: `X-Lastwords-Signature: sha256=<HMAC-SHA256 of "<X-Lastwords-Timestamp>.<raw body>">`. Verify it before acting on the event, and reject old timestamps:
+
+```python
+import hmac, hashlib, time
+
+def verify(secret: bytes, headers, body: bytes, tolerance=300) -> bool:
+    ts = headers["X-Lastwords-Timestamp"]
+    if abs(time.time() - int(ts)) > tolerance:
+        return False
+    want = "sha256=" + hmac.new(secret, ts.encode() + b"." + body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(want, headers["X-Lastwords-Signature"])
+```
+
+Go receivers can use `github.com/Arvo-AI/lastwords/webhook.Verify`.
 
 Every capture also becomes a Kubernetes Event on the pod (`LastWordsOOMKill`, `LastWordsMemoryPressure`, `LastWordsCrash`, ...), so it shows up in `kubectl describe pod` and anything that watches events. Prometheus metrics are on `:9095/metrics`.
 

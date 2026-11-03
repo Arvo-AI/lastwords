@@ -52,6 +52,7 @@ type Config struct {
 
 	WebhookURL      string
 	SlackWebhookURL string
+	WebhookSecret   string // HMAC key for X-Lastwords-Signature on webhook deliveries
 	NotifyKinds     []string
 
 	S3 S3Config

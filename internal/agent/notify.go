@@ -7,14 +7,17 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Arvo-AI/lastwords/internal/store"
+	"github.com/Arvo-AI/lastwords/webhook"
 )
 
 type notifier struct {
 	webhook string
+	secret  string // signs webhook deliveries (HMAC-SHA256); Slack does not take one
 	slack   string
 	kinds   map[string]bool
 	cluster string
@@ -27,7 +30,7 @@ func newNotifier(cfg Config, log *slog.Logger) *notifier {
 	for _, x := range cfg.NotifyKinds {
 		k[strings.TrimSpace(x)] = true
 	}
-	return &notifier{webhook: cfg.WebhookURL, slack: cfg.SlackWebhookURL, kinds: k, cluster: cfg.Cluster, log: log, http: &http.Client{Timeout: 10 * time.Second}}
+	return &notifier{webhook: cfg.WebhookURL, secret: cfg.WebhookSecret, slack: cfg.SlackWebhookURL, kinds: k, cluster: cfg.Cluster, log: log, http: &http.Client{Timeout: 10 * time.Second}}
 }
 
 // WebhookPayload is the JSON body POSTed to the generic webhook.
@@ -47,10 +50,10 @@ func (n *notifier) Send(ctx context.Context, c *store.Capture, summary string) {
 	}
 	if n.webhook != "" {
 		p := WebhookPayload{Source: "lastwords", Version: Version, Cluster: n.cluster, Event: string(c.Kind), Headline: c.Headline, Capture: c, Summary: summary}
-		n.post(ctx, n.webhook, p)
+		n.post(ctx, n.webhook, p, n.secret)
 	}
 	if n.slack != "" {
-		n.post(ctx, n.slack, slackMessage(c, n.cluster))
+		n.post(ctx, n.slack, slackMessage(c, n.cluster), "")
 	}
 }
 
@@ -73,7 +76,7 @@ func slackMessage(c *store.Capture, cluster string) map[string]any {
 	return map[string]any{"text": b.String()}
 }
 
-func (n *notifier) post(ctx context.Context, url string, body any) {
+func (n *notifier) post(ctx context.Context, url string, body any, secret string) {
 	b, err := json.Marshal(body)
 	if err != nil {
 		return
@@ -85,6 +88,11 @@ func (n *notifier) post(ctx context.Context, url string, body any) {
 		}
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("User-Agent", "lastwords/"+Version)
+		if secret != "" {
+			now := time.Now()
+			req.Header.Set(webhook.TimestampHeader, strconv.FormatInt(now.Unix(), 10))
+			req.Header.Set(webhook.SignatureHeader, webhook.Sign(secret, now, b))
+		}
 		resp, err := n.http.Do(req)
 		if err == nil {
 			resp.Body.Close()
