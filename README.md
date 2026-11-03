@@ -5,6 +5,12 @@
   </picture>
 </p>
 
+<p align="center">
+  <a href="https://artifacthub.io/packages/search?repo=lastwords"><img alt="Artifact Hub" src="https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/lastwords"></a>
+  <a href="https://github.com/Arvo-AI/lastwords/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/Arvo-AI/lastwords"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/Arvo-AI/lastwords"></a>
+</p>
+
 # lastwords
 
 **Memory snapshots before OOM kills, and logs and core dumps from crashes, for Kubernetes.**
