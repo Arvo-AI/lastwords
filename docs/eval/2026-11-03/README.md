@@ -23,8 +23,8 @@ Do coding agents find the root cause of a crash-looping service faster with last
 - Arm B got a hint, so the result covers "told it exists", not "found it unaided".
 - The grader is narrow. A pass means the answer names the code-level cause and says it is unbounded, and the "unbounded" check matched all 24 answers. In practice a pass is naming a symbol that lastwords prints. Billing passes depend on the fixture serving pprof.
 - The checkout image in arm A contained `.class` files that an agent could copy out and disassemble, which is how Opus got 3/3.
-- The billing image was copied from a demo image by digest, so its `imageID` shows the original name `lastwords-demo/leaky-go`. 10 of the 24 answers mention it.
-- `used_lw` in arm A means the agent tried lastwords after seeing its pod Events. 10 of 12 did. Most then failed because the plugin was not on PATH; three Opus runs ran the binary in the agent pod and hit RBAC.
+- The billing image was copied from a demo image by digest, so its `imageID` shows the original name `lastwords-demo/leaky-go`. 10 of the 12 billing answers mention it.
+- `used_lw` in arm A means the agent tried lastwords after seeing its pod Events. 10 of 12 did. All 10 failed because the plugin was not on PATH; three Opus runs then ran the binary in the agent pod and could not read the API token.
 - Codex was not run.
 
 The cluster no longer exists. The account ID, local paths and node names are replaced with placeholders; lines other than messages and results are removed. To rerun, build `workloads/`, push them, set the images in `storefront.yaml`, and install lastwords.
