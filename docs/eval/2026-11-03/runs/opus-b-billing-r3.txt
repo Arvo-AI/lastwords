@@ -1,0 +1,20 @@
+**Root cause: a memory leak in `main.renderInvoice` (`/src/main.go:29`). The container is being OOMKilled, not crashing.**
+
+What I found:
+- The pod has restarted 5 times. Each time the reason is `OOMKilled` (exit 137) at the 256Mi limit, about 70s after start.
+- Memory climbs in a straight line, roughly 2–5 MiB/s, for as long as the container runs. The logs show invoice rendering going steadily up (`rendered 500 … 2000 invoices`) until the kill.
+- lastwords took a Go heap snapshot at 97% of the limit. It shows 99% of the live heap (98.9 of 99.4 MiB) was allocated at `main.renderInvoice` (`main.go:29`). Nearly all of the working set is heap memory, not page cache.
+
+**Code change:** whatever `main.go:29` allocates for each invoice is being kept and never released. The usual causes are:
+- appending rendered invoices or buffers to a package-level slice, map or cache
+- a cache with no size limit or eviction
+
+Fix it by not keeping the result once the response is written. If you do need a cache, give it a size limit (LRU) or a TTL. If you're reusing buffers, use a `sync.Pool` and reset each buffer. I couldn't read the source because the image is distroless, so check line 29 to confirm which of these it is.
+
+**To buy time while you fix it** (this won't stop the leak):
+- Set `GOMEMLIMIT=230MiB` (about 90% of the limit). At the moment the GC lets the heap grow to twice the live data, so the container uses about 249 MiB for 99 MiB of live heap.
+- Raising the memory limit only delays the next kill.
+
+Other things I noticed:
+- `checkout` has the same pattern: 5 OOMKills at its 384Mi limit. It's worth checking with `kubectl lastwords show 20261103T174545Z-c04fe6`.
+- The pod spec says the image is `storefront/billing:1.4.2`, but the image actually running resolves to `lastwords-demo/leaky-go`. Check that the deployment is pulling the image you expect.

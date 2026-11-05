@@ -403,6 +403,20 @@ func (a *Agent) allowCapture(kind, key string, now time.Time) (bool, int) {
 	return true, len(recent)
 }
 
+// budgetSpent reports whether this kind of capture has used up its budget for
+// the container key, without using any of it.
+func (a *Agent) budgetSpent(kind, key string, now time.Time) bool {
+	a.crashMu.Lock()
+	defer a.crashMu.Unlock()
+	n := 0
+	for _, t := range a.crashes[kind+"|"+key] {
+		if now.Sub(t) < crashWindow {
+			n++
+		}
+	}
+	return n >= maxCrashCaptures
+}
+
 // key identifies a container across restarts (pod/container), falling back
 // to the container ID when the pod is unknown.
 func refKey(r k8s.ContainerRef, id string) string {

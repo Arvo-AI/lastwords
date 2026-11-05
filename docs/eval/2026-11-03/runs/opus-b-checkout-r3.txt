@@ -1,0 +1,21 @@
+**Root cause: a memory leak in `CheckoutService.SessionCache`.** The container is being OOMKilled (exit 137, 384Mi limit) about a minute after each start.
+
+- Every checkout calls `SessionCache.put(new CartSnapshot(sessionId, now, new byte[65536]))`. Snapshots go into a plain `ConcurrentHashMap` keyed by a session ID that is unique each time. Nothing ever removes or evicts them.
+- At the default `REQUESTS_PER_SECOND=100`, that's 100 × 64 KiB ≈ 6.25 MiB/s. lastwords measured about 6 MiB/s of growth.
+- The lastwords heap snapshot taken just before a kill showed `byte[]` holding 259 MiB (100% of the heap) across 4,140 `CartSnapshot` objects. Each one holds a 64 KiB payload.
+- There's no source in the image, only `.class` files. I disassembled those with `javap` to confirm the code path above.
+
+**Code changes:**
+1. **Bound the cache** (this is the actual fix). Use a size and time-limited cache, for example Caffeine:
+   ```java
+   private final Cache<String, CartSnapshot> bySession = Caffeine.newBuilder()
+       .maximumSize(1_000)
+       .expireAfterWrite(Duration.ofMinutes(15))
+       .build();
+   ```
+   Or remove the entry when checkout completes. If you only need the snapshot briefly, don't cache it at all. Also ask whether each snapshot really needs a fixed 64 KiB buffer; sizing it to the real payload would cut memory a lot.
+2. **Fix the JVM heap setting.** It's a separate problem that makes the crash worse. The image sets `JAVA_TOOL_OPTIONS=-Xmx1g` but the container limit is 384Mi, so the JVM never feels heap pressure and the kernel kills it before Java can throw an OOM error. Use `-XX:MaxRAMPercentage=75` (or `-Xmx256m`) instead, so heap trouble shows up as a Java error you can diagnose.
+
+Raising the memory limit won't help. With the leak in place, it would only delay the next kill.
+
+`billing-api` in the same namespace is also crash-looping with OOM kills (256Mi limit, growing about 5 MiB/s). I didn't look into it, but it may have a similar bug.

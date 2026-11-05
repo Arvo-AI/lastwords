@@ -1,0 +1,22 @@
+I can't name the exact line of code yet. I found what's killing the pod, but the evidence that would point to the allocation site is blocked by a permissions problem, and I don't have the source.
+
+**What's happening**
+- `billing-api` is being **OOMKilled** (exit code 137) because it hits its 256Mi memory limit. It has restarted 4 times in about 6 minutes and is now in CrashLoopBackOff.
+- Memory climbs steadily at about **5 MiB/s** from startup until the kill, roughly 60–70s after the 20s warm-up. Every run looks the same: `rendered 0 → 500 → 1000 → 1500 invoices`, then it dies.
+- That works out to about **100–130 KB kept per rendered invoice**. Memory grows with the number of invoices and is never released. That's a leak, not a limit that's set too low. Raising the limit would only delay the crash.
+- `checkout` in the same namespace is OOM-looping the same way (384Mi limit, ~6 MiB/s), so it may share the same code.
+
+**Likely fix**
+In the invoice rendering loop, look for something that grows with every invoice and is never cleared:
+- invoices or rendered output (`[]byte`, `bytes.Buffer`, strings) appended to a package-level slice or map, or to an unbounded "cache"
+- a buffer that's reused but never `Reset()`, or `sync.Pool` objects kept after use
+- goroutines started per invoice that never exit, holding on to their data
+
+Fix: drop each rendered invoice once it's written or sent. If you need a cache, give it a size limit or an LRU. Stream output instead of collecting it.
+
+**Why I can't confirm the line**
+The `lastwords` agent took heap snapshots before each kill (e.g. `20261103T174441Z-7a63ee` at 97%), but I can't read them. Its own service account can't read secret `lastwords/lastwords-api`. The error message says to bind the `lastwords-reader` Role. Both containers are distroless, so I can't exec in, and I'm not allowed to use `pods/proxy` for pprof.
+
+To pin the exact line, either:
+1. bind `lastwords-reader` to SA `lastwords:lastwords`, then I'll run `lastwords show 20261103T174441Z-7a63ee` and get the profile, or
+2. point me at the `billing` repo (image `storefront/billing:1.4.2`).

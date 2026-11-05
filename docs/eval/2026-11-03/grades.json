@@ -1,0 +1,328 @@
+[
+ {
+  "agent": "opus",
+  "arm": "a",
+  "sc": "billing",
+  "rep": "r1",
+  "found": true,
+  "used_lw": true,
+  "diy": [
+   "port-forward",
+   "pprof",
+   "proc/"
+  ],
+  "calls": 16,
+  "secs": 152,
+  "mentions_raise_limit": false
+ },
+ {
+  "agent": "opus",
+  "arm": "a",
+  "sc": "billing",
+  "rep": "r2",
+  "found": false,
+  "used_lw": true,
+  "diy": [
+   "pprof",
+   "proc/"
+  ],
+  "calls": 12,
+  "secs": 58,
+  "mentions_raise_limit": false
+ },
+ {
+  "agent": "opus",
+  "arm": "a",
+  "sc": "billing",
+  "rep": "r3",
+  "found": false,
+  "used_lw": true,
+  "diy": [
+   "port-forward",
+   "pprof",
+   "proc/"
+  ],
+  "calls": 18,
+  "secs": 172,
+  "mentions_raise_limit": false
+ },
+ {
+  "agent": "opus",
+  "arm": "a",
+  "sc": "checkout",
+  "rep": "r1",
+  "found": true,
+  "used_lw": true,
+  "diy": [
+   "jcmd",
+   "proc/"
+  ],
+  "calls": 16,
+  "secs": 104,
+  "mentions_raise_limit": true
+ },
+ {
+  "agent": "opus",
+  "arm": "a",
+  "sc": "checkout",
+  "rep": "r2",
+  "found": true,
+  "used_lw": false,
+  "diy": [
+   "jcmd",
+   "proc/"
+  ],
+  "calls": 6,
+  "secs": 77,
+  "mentions_raise_limit": false
+ },
+ {
+  "agent": "opus",
+  "arm": "a",
+  "sc": "checkout",
+  "rep": "r3",
+  "found": true,
+  "used_lw": true,
+  "diy": [
+   "jcmd",
+   "proc/"
+  ],
+  "calls": 8,
+  "secs": 79,
+  "mentions_raise_limit": false
+ },
+ {
+  "agent": "opus",
+  "arm": "b",
+  "sc": "billing",
+  "rep": "r1",
+  "found": true,
+  "used_lw": true,
+  "diy": [],
+  "calls": 5,
+  "secs": 26,
+  "mentions_raise_limit": false
+ },
+ {
+  "agent": "opus",
+  "arm": "b",
+  "sc": "billing",
+  "rep": "r2",
+  "found": true,
+  "used_lw": true,
+  "diy": [
+   "pprof"
+  ],
+  "calls": 7,
+  "secs": 36,
+  "mentions_raise_limit": true
+ },
+ {
+  "agent": "opus",
+  "arm": "b",
+  "sc": "billing",
+  "rep": "r3",
+  "found": true,
+  "used_lw": true,
+  "diy": [],
+  "calls": 6,
+  "secs": 31,
+  "mentions_raise_limit": false
+ },
+ {
+  "agent": "opus",
+  "arm": "b",
+  "sc": "checkout",
+  "rep": "r1",
+  "found": true,
+  "used_lw": true,
+  "diy": [
+   "proc/"
+  ],
+  "calls": 10,
+  "secs": 123,
+  "mentions_raise_limit": false
+ },
+ {
+  "agent": "opus",
+  "arm": "b",
+  "sc": "checkout",
+  "rep": "r2",
+  "found": true,
+  "used_lw": true,
+  "diy": [],
+  "calls": 10,
+  "secs": 93,
+  "mentions_raise_limit": false
+ },
+ {
+  "agent": "opus",
+  "arm": "b",
+  "sc": "checkout",
+  "rep": "r3",
+  "found": true,
+  "used_lw": true,
+  "diy": [],
+  "calls": 9,
+  "secs": 76,
+  "mentions_raise_limit": false
+ },
+ {
+  "agent": "sonnet",
+  "arm": "a",
+  "sc": "billing",
+  "rep": "r1",
+  "found": false,
+  "used_lw": true,
+  "diy": [
+   "pprof"
+  ],
+  "calls": 5,
+  "secs": 25,
+  "mentions_raise_limit": false
+ },
+ {
+  "agent": "sonnet",
+  "arm": "a",
+  "sc": "billing",
+  "rep": "r2",
+  "found": false,
+  "used_lw": true,
+  "diy": [],
+  "calls": 4,
+  "secs": 21,
+  "mentions_raise_limit": false
+ },
+ {
+  "agent": "sonnet",
+  "arm": "a",
+  "sc": "billing",
+  "rep": "r3",
+  "found": false,
+  "used_lw": false,
+  "diy": [
+   "proc/"
+  ],
+  "calls": 4,
+  "secs": 26,
+  "mentions_raise_limit": true
+ },
+ {
+  "agent": "sonnet",
+  "arm": "a",
+  "sc": "checkout",
+  "rep": "r1",
+  "found": false,
+  "used_lw": true,
+  "diy": [
+   "jcmd",
+   "proc/"
+  ],
+  "calls": 7,
+  "secs": 32,
+  "mentions_raise_limit": true
+ },
+ {
+  "agent": "sonnet",
+  "arm": "a",
+  "sc": "checkout",
+  "rep": "r2",
+  "found": false,
+  "used_lw": true,
+  "diy": [
+   "jcmd"
+  ],
+  "calls": 7,
+  "secs": 34,
+  "mentions_raise_limit": true
+ },
+ {
+  "agent": "sonnet",
+  "arm": "a",
+  "sc": "checkout",
+  "rep": "r3",
+  "found": false,
+  "used_lw": true,
+  "diy": [
+   "jcmd",
+   "proc/"
+  ],
+  "calls": 13,
+  "secs": 621,
+  "mentions_raise_limit": true
+ },
+ {
+  "agent": "sonnet",
+  "arm": "b",
+  "sc": "billing",
+  "rep": "r1",
+  "found": true,
+  "used_lw": true,
+  "diy": [],
+  "calls": 4,
+  "secs": 19,
+  "mentions_raise_limit": false
+ },
+ {
+  "agent": "sonnet",
+  "arm": "b",
+  "sc": "billing",
+  "rep": "r2",
+  "found": true,
+  "used_lw": true,
+  "diy": [
+   "pprof"
+  ],
+  "calls": 6,
+  "secs": 407,
+  "mentions_raise_limit": true
+ },
+ {
+  "agent": "sonnet",
+  "arm": "b",
+  "sc": "billing",
+  "rep": "r3",
+  "found": true,
+  "used_lw": true,
+  "diy": [],
+  "calls": 4,
+  "secs": 391,
+  "mentions_raise_limit": false
+ },
+ {
+  "agent": "sonnet",
+  "arm": "b",
+  "sc": "checkout",
+  "rep": "r1",
+  "found": true,
+  "used_lw": true,
+  "diy": [],
+  "calls": 3,
+  "secs": 17,
+  "mentions_raise_limit": false
+ },
+ {
+  "agent": "sonnet",
+  "arm": "b",
+  "sc": "checkout",
+  "rep": "r2",
+  "found": true,
+  "used_lw": true,
+  "diy": [],
+  "calls": 3,
+  "secs": 21,
+  "mentions_raise_limit": false
+ },
+ {
+  "agent": "sonnet",
+  "arm": "b",
+  "sc": "checkout",
+  "rep": "r3",
+  "found": true,
+  "used_lw": true,
+  "diy": [],
+  "calls": 4,
+  "secs": 24,
+  "mentions_raise_limit": false
+ }
+]

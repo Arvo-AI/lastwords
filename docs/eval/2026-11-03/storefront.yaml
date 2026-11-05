@@ -1,0 +1,61 @@
+apiVersion: v1
+kind: Namespace
+metadata: {name: storefront}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: checkout, namespace: storefront, labels: {app: checkout, team: payments}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: checkout}}
+  template:
+    metadata: {labels: {app: checkout, team: payments}}
+    spec:
+      containers:
+        - name: checkout
+          image: ACCOUNT.dkr.ecr.us-east-2.amazonaws.com/storefront/checkout:2.8.0
+          ports: [{containerPort: 8080}]
+          resources: {requests: {cpu: 100m, memory: 256Mi}, limits: {memory: 384Mi}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: billing-api, namespace: storefront, labels: {app: billing-api, team: payments}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: billing-api}}
+  template:
+    metadata: {labels: {app: billing-api, team: payments}}
+    spec:
+      containers:
+        - name: billing-api
+          image: ACCOUNT.dkr.ecr.us-east-2.amazonaws.com/storefront/billing:1.4.2
+          ports: [{containerPort: 8080}]
+          resources: {requests: {cpu: 50m, memory: 128Mi}, limits: {memory: 256Mi}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: web, namespace: storefront, labels: {app: web}}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: web}}
+  template:
+    metadata: {labels: {app: web}}
+    spec:
+      containers:
+        - name: web
+          image: nginx:1.27-alpine
+          resources: {limits: {memory: 64Mi}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: cart-redis, namespace: storefront, labels: {app: cart-redis}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: cart-redis}}
+  template:
+    metadata: {labels: {app: cart-redis}}
+    spec:
+      containers:
+        - name: redis
+          image: redis:7.4-alpine
+          resources: {limits: {memory: 128Mi}}

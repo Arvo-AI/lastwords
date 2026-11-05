@@ -1,0 +1,18 @@
+I haven't pinned down the exact line of code. I can say what's failing and what to change.
+
+**What's happening**
+- The container is OOMKilled (exit 137) in a loop, with 6 restarts so far. The memory limit is 384Mi and there's no CPU limit.
+- The lastwords events show memory growing at about 2–6.5 MiB/s. Each run dies after roughly 4000 handled checkouts, so memory grows with request volume.
+- The JVM runs with `JAVA_TOOL_OPTIONS=-Xmx1g`. That max heap is almost three times the container limit, so the GC never feels pressure before the kernel kills the process. This mismatch is why it's killed instead of throwing a Java `OutOfMemoryError` with a heap dump.
+
+**What to change**
+1. **Config fix (safe to do now):** make the heap fit the container. Replace `-Xmx1g` with `-XX:MaxRAMPercentage=70`, or set `-Xmx256m`. Alternatively raise the memory limit to 1.25–1.5Gi, which is a mitigation only. Add `-XX:+HeapDumpOnOutOfMemoryError` so the next failure leaves evidence.
+2. **Code fix (probable, not confirmed):** version 2.8.0 leaks per request. Look for anything that grows with each checkout and never gets evicted, such as a static or singleton map or list, an unbounded cache, per-request listeners or threads, or unclosed clients or streams. Diff 2.8.0 against the previous release for new caches or collections. I can't confirm which one it is.
+
+**What I couldn't do**
+- There's no source code in my working directory.
+- `kubectl lastwords` isn't installed here, so I couldn't read the snapshots the events point to. Run `kubectl lastwords show 20261103T174433Z-017b5e` yourself; those snapshots probably show what's growing.
+- `jcmd` isn't in the image, and the pod is in CrashLoopBackOff, so I couldn't take a live heap histogram.
+- The JVM already has NativeMemoryTracking on, but I couldn't read it.
+
+If you need to stop the restarts immediately, roll back to the previous image: `kubectl -n storefront rollout undo deploy/checkout`. I haven't run that, because it changes the cluster.

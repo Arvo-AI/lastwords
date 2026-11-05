@@ -1,0 +1,17 @@
+**Root cause:** `billing-api` is being OOMKilled (exit 137) at its 256Mi limit. Memory grows at about 2–5 MiB/s from startup, and the pod dies after roughly 70 seconds. The pod logs show it rendering invoices continuously, 500 at a time, and never freeing them.
+
+The lastwords captures (`kubectl lastwords show 20261103T174441Z-7a63ee`) point to the cause:
+- All of the memory is anonymous Go heap, not page cache.
+- One allocation site holds 99% of the live heap (98.9 MiB): `main.renderInvoice` at `/src/main.go:29`.
+
+**What to change in the code:** look at `main.go:29` in `renderInvoice`. Something there is retained for the life of the process. The likely candidates are a package-level slice or map that is appended to on every invoice, an unbounded cache, or buffers kept in a global.
+- Don't store rendered invoices in memory. Write them out or stream them, and drop the reference once each one is done.
+- If it's a cache, bound it with a size limit, an eviction policy or a TTL.
+
+**Stopgaps:**
+- Set `GOMEMLIMIT` to about 230MiB so the GC works harder before the kernel kills the process. This only delays the kill.
+- Raising the memory limit won't fix it, because the growth is linear.
+
+**Caveats:**
+- The captures list the image as `lastwords-demo/leaky-go:e2e`, but the deployment runs `storefront/billing:1.4.2`. The `main.go:29` reference comes from the capture's profile, so confirm it matches the 1.4.2 source before editing. I have no source in this environment to check.
+- `checkout` in the same namespace is also being OOMKilled (384Mi limit, similar growth). It may share the same bug or a shared library, so check it too.

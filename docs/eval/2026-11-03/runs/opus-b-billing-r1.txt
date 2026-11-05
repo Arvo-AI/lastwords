@@ -1,0 +1,25 @@
+I've found the root cause. The source code isn't in this directory or in the container (it's a distroless image), so I can point you to the line but not quote it.
+
+## Root cause: a memory leak in `main.renderInvoice` (`/src/main.go:29`)
+
+- **What's happening:** `billing-api` is being **OOMKilled** (exit code 137) when it hits its 256Mi limit. It has restarted 5 times, about every 70 seconds.
+- **The pattern:** memory climbs steadily from about 1 MiB to the limit at about 2–5 MiB/s. The logs show it in step with the invoice count: `rendered 500 … 1000 … 2000 invoices`, then the kill.
+- **Where the memory goes:** a heap profile lastwords took at 97% of the limit shows **98.9 MiB of the 99.4 MiB live Go heap (99%) was allocated at `main.renderInvoice`, `/src/main.go:29`**. Something created there is being kept and never released.
+- All the memory is program memory (heap), not file cache. Go's garbage collector lets the process grow to about twice the live heap, which pushes it over 256Mi.
+
+## Code change
+
+At `main.go:29`, `renderInvoice` keeps every rendered invoice, or its buffer, alive. Usually this is one of:
+- appending to a package-level slice or map ("cache" or "history") that is never cleared
+- a slice of a large buffer that keeps the whole buffer in memory
+
+Fix: don't keep rendered output after the request ends. If you really need a cache, give it a size limit (LRU) or an expiry time.
+
+**Optional stopgap:** set `GOMEMLIMIT=230MiB` (about 90% of the limit) in the deployment. That makes the garbage collector work harder and delays the kills, but it won't stop them. Raising the memory limit won't help either; it only pushes back the next kill.
+
+## Also worth knowing
+
+- **`checkout` has the same problem:** it's being OOMKilled at its 384Mi limit with the same steady growth. Run `kubectl lastwords list` to find its captures and check its heap profile next.
+- **The image doesn't match its tag:** the pod spec says `storefront/billing:1.4.2`, but the image actually running comes from `lastwords-demo/leaky-go`. Check which code is really deployed before you go looking in the `billing` repo.
+
+To see the full heap profile: `kubectl lastwords get 20261103T174441Z-7a63ee go-heap.pb.gz`, then `go tool pprof -top go-heap.pb.gz`.

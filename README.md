@@ -92,6 +92,8 @@ Measured on EKS with the failures in this repo; every command and output is from
 - [Get core dumps from crashing Kubernetes pods](docs/guides/kubernetes-core-dumps.md)
 - [Find what is leaking in a Go pod before it is OOMKilled](docs/guides/go-oomkilled-pprof.md)
 
+Agent eval: [setup, grader and every transcript](docs/eval/2026-11-03) from 24 runs with and without lastwords.
+
 ## Let your AI agent read it
 
 lastwords ships an MCP server. Claude Code, Codex, Cursor and any MCP client can list and read captures:
@@ -138,7 +140,7 @@ Common settings (see [values.yaml](deploy/helm/lastwords/values.yaml) for all):
 | `capture.threshold` | `0.90` | Capture at this share of the memory limit (working set, like the kubelet) |
 | `capture.lastGasp` | `0.97` | Second capture right before the kill |
 | `capture.predictive` | `true` | Capture early if the limit will be hit within `predictSeconds` |
-| `capture.jvmGCHeadroom` | `0.25` | JVMs are usually killed by a GC at ~75-80% of the limit, so their tiers aim below it |
+| `capture.jvmGCHeadroom` | `0.25` | A JVM with `-Xmx` above the limit can be killed by a GC before memory reaches 100% (80% with SerialGC in [our EKS test](docs/guides/jvm-oomkilled-below-limit.md)), so its tiers aim below that |
 | `capture.heapDumps` | `false` | Full Java heap dumps for every JVM. Pods can opt in with the `lastwords.dev/heap-dump: "true"` annotation |
 | `capture.goPprofPort` | `6060` | Where Go programs serve `net/http/pprof` |
 | `coreDumps.enabled` | `false` | Capture core dumps (sets the node's `kernel.core_pattern`, needs a privileged agent) |

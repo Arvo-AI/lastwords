@@ -1,0 +1,24 @@
+The root cause is a memory leak in `checkout`. `SessionCache` adds entries and never removes them, so the pod hits its 384Mi limit after about a minute and gets OOMKilled (exit 137).
+
+**Evidence**
+- `describe pod` shows `Last State: OOMKilled`, exit 137, with a 384Mi limit.
+- lastwords captures show memory climbing steadily from 16 MiB to 309 MiB in 65s, about 6 MiB/s. It's never released, which points to a leak, not a traffic spike.
+- In the heap snapshot just before the kill, 99% of the heap is `byte[]` (181.7 MiB). There are 2,900 `CheckoutService$CartSnapshot` objects held by one `SessionCache`, and 181.7 MiB / 2,900 ≈ 64 KiB each.
+- I couldn't find the `.java` source on the pod, so I disassembled the classes in `/app`:
+  - `SessionCache` wraps a `ConcurrentHashMap<String, CartSnapshot>`. It only has `put()` and `size()`; nothing ever calls `remove`.
+  - Each checkout creates a new session ID with a new 64 KiB `byte[]` payload and calls `cache.put(...)`. At the default 100 req/s that's about 6.4 MiB/s, which matches the observed growth.
+
+**What to change in the code**
+1. **Fix (`CheckoutService.SessionCache`):** cap the cache and expire old entries. For example, use Caffeine:
+   ```java
+   private final Cache<String, CartSnapshot> bySession = Caffeine.newBuilder()
+       .maximumSize(1_000)                       // or maximumWeight on payload.length
+       .expireAfterWrite(Duration.ofMinutes(15))
+       .build();
+   ```
+   Or call `bySession.remove(sessionId)` when a checkout completes or a session ends. Also check whether you need to keep the whole 64 KiB payload per session at all.
+2. **Also fix:** the image sets `JAVA_TOOL_OPTIONS=-Xmx1g`, but the container limit is 384Mi. The JVM thinks it has room to grow, so the kernel kills it before Java ever throws `OutOfMemoryError`. Replace that with `-XX:MaxRAMPercentage=75`, or set `-Xmx` to about 280m. This doesn't fix the leak, but it makes failures show up as a Java OOM you can debug.
+
+Raising the memory limit would only delay the next kill.
+
+`billing-api` in the same namespace has the same pattern: OOMKilled every minute or two, growing about 5 MiB/s against a 256Mi limit. I didn't dig into it, but it's worth a look.

@@ -1,0 +1,21 @@
+I couldn't pin down the exact line of code. I can tell you what's failing and where to look.
+
+**Root cause:** `billing-api` is being OOMKilled (exit 137, limit 256Mi). It has restarted 5 times in about 9 minutes.
+- The `lastwords` events show memory growing at a steady ~5 MiB/s. It reaches about 97% of the limit roughly 70s after start, and the kill follows.
+- The previous container's log shows `rendered N invoices` every ~12s, adding 500 each time, until the kill at about 2000. Memory grows with the number of invoices rendered and is never released.
+- This is a leak, not a limit that's too low. At 5 MiB/s, raising the limit only delays the kill.
+- The `Image ID` shows the repo `lastwords-demo/leaky-go`, though the tag is `storefront/billing:1.4.2`. That looks odd, so check that the right image was deployed.
+
+**What to change in the code:** look at the invoice rendering path, which is a Go service. Typical culprits are:
+- A package-level map, slice or cache that gets an entry per invoice and is never evicted.
+- Buffers or rendered PDFs appended to a global slice.
+- Goroutines that never exit, for example blocked on a channel, each holding an invoice.
+
+Fix it by bounding or evicting the cache, or by not retaining rendered output after it's sent.
+
+**What I couldn't check:**
+- `kubectl lastwords show <id>` isn't installed here. Those snapshots would likely show the allocation site, so run it where the plugin is available, using IDs such as `20261103T174441Z-7a63ee`.
+- The image has no shell, and my service account can't reach `pods/proxy`. That blocked me from getting a pprof heap profile.
+- If the service exposes `/debug/pprof/heap`, run `kubectl port-forward` and `go tool pprof` to find the allocation site. I'd start with that.
+
+**Stopgap:** raising the memory limit buys a little time but won't stop the restarts.

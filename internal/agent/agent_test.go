@@ -2,6 +2,8 @@ package agent
 
 import (
 	"github.com/Arvo-AI/lastwords/internal/cgroup"
+	"github.com/Arvo-AI/lastwords/internal/store"
+	"strings"
 	"testing"
 	"time"
 )
@@ -50,5 +52,36 @@ func TestJVMTiersFireBeforeTheGCKill(t *testing.T) {
 	}
 	if r := first(false); r < 0.70 {
 		t.Fatalf("non-JVM captured at %.0f%%, earlier than the plain predictive floor", 100*r)
+	}
+}
+
+// A crash loop spends the snapshot budget on earlier restarts. The kill's
+// summary must say so, not blame sampling, when the timeline shows a slow climb.
+func TestNoSnapshotBlamesSpentBudget(t *testing.T) {
+	a := &Agent{crashes: map[string][]time.Time{}}
+	now := time.Now()
+	key := "ns/p/c"
+	if a.budgetSpent("pressure", key, now) {
+		t.Fatal("budget spent before any capture")
+	}
+	for i := 0; i < maxCrashCaptures; i++ {
+		a.allowCapture("pressure", key, now)
+	}
+	if !a.budgetSpent("pressure", key, now) {
+		t.Fatal("budget not spent after the maximum number of captures")
+	}
+	if a.budgetSpent("pressure", key, now.Add(crashWindow)) {
+		t.Fatal("budget still spent after the window passed")
+	}
+
+	c := &store.Capture{Termination: &store.Termination{Reason: "OOMKilled", ExitCode: 137}}
+	has := func(budgetSpent bool, want string) bool {
+		return strings.Contains(strings.Join(deathFindings(c, nil, 1<<28, "", 0, budgetSpent), "\n"), want)
+	}
+	if !has(true, "earlier restarts already used") || has(true, "between samples") {
+		t.Fatal("spent budget not reported as the reason")
+	}
+	if !has(false, "between samples") {
+		t.Fatal("timing explanation missing when the budget was not spent")
 	}
 }

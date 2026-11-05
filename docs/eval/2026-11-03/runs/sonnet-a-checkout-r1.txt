@@ -1,0 +1,17 @@
+**Root cause (partly confirmed):** `checkout` is being OOMKilled (exit 137). The memory limit is 384Mi and the heap is allowed to grow far past it.
+
+**Evidence**
+- Last state is `OOMKilled`, exit 137, with 5+ restarts in about 9 minutes.
+- The JVM runs with `JAVA_TOOL_OPTIONS=-Xmx1g -XX:NativeMemoryTracking=summary`. The max heap is 1 GiB but the container limit is 384Mi. The JVM doesn't know it will be killed, so the kernel kills it first.
+- The `lastwords` events show memory growing at 2–6.5 MiB/s, reaching the limit within about a minute of start. The logs stop at "handled 4000 checkouts" with no Java exception. That fits a kill from outside the process, not a crash inside it.
+
+**What I couldn't confirm**
+- **Leak versus under-sizing:** `kubectl lastwords` isn't installed here, so I couldn't read the snapshots. The container also dies before `exec` works, and the image has no `jcmd`. A steady 6 MiB/s climb under load looks like a leak, but I haven't seen a heap histogram.
+- **Source code:** it isn't in this directory, so I can't point to a specific line.
+
+**What to change**
+1. **Heap flags (certain):** replace `-Xmx1g` with `-XX:MaxRAMPercentage=60` (or `-Xmx` around 230m). Leave room for metaspace, threads and direct buffers. Either raise the limit or set the heap to fit under it.
+2. **Leak (likely):** look in the checkout request path for objects that live past a request. Typical culprits are static or unbounded caches or maps keyed per checkout or session, per-request clients or executors that aren't closed, and listeners that are never deregistered. Add `-XX:+HeapDumpOnOutOfMemoryError` with a path on a volume, or run `jcmd <pid> GC.class_histogram` once the image includes a JDK. Look for the class that keeps growing. Raising the limit will only delay the kill if it's a leak.
+3. **Quick mitigation (optional):** raising the limit to about 1Gi stops the restarts while you chase the leak. This is a deploy change, so I haven't made it.
+
+I can pull the `lastwords` snapshots if you tell me where that tool lives. Otherwise, share the repo and I'll look for the leak.

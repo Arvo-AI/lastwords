@@ -1,0 +1,21 @@
+I haven't found the code-level root cause yet. Here is what I can confirm.
+
+**Confirmed**
+- The container is being **OOMKilled** (exit 137). It has restarted 5 times in 9 minutes against a 384Mi memory limit.
+- The image is `checkout:2.8.0`.
+- Memory grows fast, about 2–6 MiB/s, right after startup. The log shows "warming up for 20s" and then about 4000 handled checkouts before the kill.
+- The pod sets `JAVA_TOOL_OPTIONS=-Xmx1g`. That heap limit is nearly three times the 384Mi container limit, so the JVM never sees memory pressure and the kernel kills the container before GC can respond.
+
+**What I couldn't do**
+- `kubectl lastwords show …` isn't installed here. The OOM events point to snapshots that might show what was growing.
+- `exec` fails with "container not found" because the container keeps dying. The image also has no `jcmd`, so I couldn't take a heap histogram.
+- I don't have the source in this working directory.
+
+So I can't tell you which line leaks. Growth that starts right after startup and tracks request volume usually means an unbounded cache, map, or queue, or per-request objects that are never released.
+
+**What to change**
+1. **Config, as a mitigation:** set `-Xmx` below the container limit, for example `-XX:MaxRAMPercentage=70` or `-Xmx256m`. Alternatively, raise the memory limit to at least 1Gi. The pod will then fail with a Java `OutOfMemoryError` instead of a silent kill.
+2. **Code:** look at what changed between the previous release and 2.8.0, and check for unbounded in-memory structures in the checkout path. To confirm the leak, add `-XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/tmp`, or run a pod with a bigger limit and take `jcmd GC.class_histogram`.
+3. **Fast rollback:** if 2.7.x was stable, roll back with `kubectl rollout undo`. That's a write, so I haven't run it.
+
+If you can install the `lastwords` plugin or give me the repo path, I can narrow down the leak.

@@ -1,0 +1,38 @@
+# The on-call identity the agents get: read everything except secrets, exec
+# and port-forward into pods (so they can run jcmd/pprof themselves), and
+# read lastwords' API token + proxy so the CLI works. No writes.
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: oncall, namespace: default}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: oncall-view}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: view}
+subjects: [{kind: ServiceAccount, name: oncall, namespace: default}]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: oncall-debug}
+rules:
+  - {apiGroups: [""], resources: [pods/exec, pods/portforward], verbs: [create, get]}
+  - {apiGroups: [""], resources: [nodes/proxy], verbs: [get]}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: oncall-debug}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: oncall-debug}
+subjects: [{kind: ServiceAccount, name: oncall, namespace: default}]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: oncall-lastwords, namespace: lastwords}
+rules:
+  - {apiGroups: [""], resources: [secrets], resourceNames: [lastwords-api], verbs: [get]}
+  - {apiGroups: [""], resources: [pods/proxy, services/proxy], verbs: [get, create]}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: oncall-lastwords, namespace: lastwords}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: oncall-lastwords}
+subjects: [{kind: ServiceAccount, name: oncall, namespace: default}]

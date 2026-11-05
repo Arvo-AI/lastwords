@@ -1,0 +1,18 @@
+I found it. The `SessionCache` in `checkout` grows without limit, and the JVM heap cap (`-Xmx1g`) is higher than the container's 384Mi memory limit, so Kubernetes kills the pod for running out of memory (OOMKilled) each time.
+
+**What I saw**
+- The pod is `OOMKilled` (exit 137) about every 65 seconds, with 3 restarts so far. The cluster's memory-pressure events show usage growing about 6–6.5 MiB/s until it hits 384Mi.
+- I copied the class files out of the running pod and disassembled them (no source in the image). `CheckoutService$SessionCache` wraps a `ConcurrentHashMap<String, CartSnapshot>`. It has `put()` but no remove, expiry or size limit.
+- Each checkout stores a `CartSnapshot` holding a 64 KB `byte[]` payload, keyed by a new session id. At the default `REQUESTS_PER_SECOND=100`, that's about 100 × 64 KB/s ≈ 6.25 MiB/s, which matches the observed growth. Nothing is ever freed, so memory use only goes up.
+- The logs show `Picked up JAVA_TOOL_OPTIONS: -Xmx1g`. That isn't set in the Deployment, so it's coming from the image. With a 1g heap allowed inside a 384Mi container, the JVM never has to free memory or throw `OutOfMemoryError`; the kernel kills it first. This is why it shows up as a restart loop rather than a Java error.
+
+**Code changes**
+1. **Root cause: add eviction to `SessionCache`.** Either:
+   - remove the entry when the checkout completes or the session ends (`bySession.remove(sessionId)`), or
+   - replace the map with a bounded cache that expires entries, e.g. Caffeine: `Caffeine.newBuilder().maximumSize(N).expireAfterWrite(Duration.ofMinutes(M)).build()`. `CartSnapshot` already has a `createdAt` field for this.
+   - Also consider whether the full 64 KB payload needs to be kept at all. Storing a reference, or keeping the cart in `cart-redis`, which is already in the namespace, may be enough.
+2. **Make the heap fit the container.** In the Dockerfile, replace `-Xmx1g` with `-XX:MaxRAMPercentage=75`, which sizes the heap from the container limit. If the cache fills up again, you'll get a clear Java heap error instead of a silent kill.
+
+Raising the memory limit alone only delays the crash, because growth is linear and unbounded.
+
+**For right now:** this is a guess I haven't checked against the code, but lowering `REQUESTS_PER_SECOND` on the Deployment may slow the growth until the fix ships. My access is read-only, so I haven't changed anything.

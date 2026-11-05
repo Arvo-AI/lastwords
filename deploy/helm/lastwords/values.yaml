@@ -16,9 +16,10 @@ capture:
   # Capture early when memory is climbing fast enough to hit the limit within predictSeconds.
   predictive: true
   predictSeconds: 15
-  # A JVM is usually OOM-killed by a GC that copies live objects into the old
-  # generation, at about 75-80% of its limit, not at 100%. Capture tiers for
-  # JVMs are measured against limit * (1 - jvmGCHeadroom). 0 disables.
+  # A JVM with -Xmx above its limit can be OOM-killed by a GC that copies live
+  # objects into the old generation before memory reaches 100% (80% with
+  # SerialGC in our EKS test; G1 and ParallelGC behaved differently). Capture
+  # tiers for JVMs are measured against limit * (1 - jvmGCHeadroom). 0 disables.
   jvmGCHeadroom: 0.25
   # Memory sampling interval and how much history each capture includes.
   interval: 500ms

@@ -1,0 +1,19 @@
+**Root cause:** `checkout` has a memory leak. The heap grows without bound until the cgroup OOM-kills it at the 384Mi limit, about every 60 seconds (exit 137, CrashLoopBackOff). The JVM is also set up so it can't see that limit.
+
+**Evidence** (lastwords capture `20261103T174438Z-c01d48`):
+- Memory climbs steadily from 17 MiB to 312 MiB in about 60 s, at roughly 5 MiB/s. 99% of it is anonymous heap, not page cache.
+- `byte[]` is 100% of the heap (259 MiB in 16k arrays). The only application classes with notable counts are `CheckoutService$CartSnapshot` (4140 instances) and a single `CheckoutService$SessionCache`.
+- The logs show the service dying after "handled 4000 checkouts", so memory grows with request count. About 4 `byte[]` arrays are retained per checkout.
+- The pod runs with `JAVA_TOOL_OPTIONS=-Xmx1g`, but the container limit is 384Mi. The JVM thinks it has 1 GB, so GC never gets pushed to reclaim and the kernel kills the process first.
+
+**What to change in code:**
+1. **`CheckoutService.SessionCache`:** it appears to hold every `CartSnapshot`, and each snapshot keeps `byte[]` payloads, without ever evicting them. I don't have the source, so I inferred this from the heap data. Bound the cache with a max size and a TTL, for example Caffeine `maximumSize(...)` and `expireAfterWrite(...)`. Also remove entries when a checkout completes or is abandoned.
+2. **`CartSnapshot`:** check why it holds large `byte[]` buffers (about 16 KB each). Store only the IDs or fields you need, or don't retain the raw payload.
+
+**Config changes** (these help but don't fix the leak):
+- Set the heap relative to the container instead of `-Xmx1g`, for example `-XX:MaxRAMPercentage=65`. Keep the heap at roughly 65–70% of the limit to leave room for metaspace, threads and native memory.
+- Raising the 384Mi limit would only delay the kill.
+
+**Related:** `billing-api` in the same namespace is also being OOM-killed (256Mi limit, about 5 MiB/s growth). It may have a similar leak or a shared cause, so it's worth checking.
+
+I changed nothing in the cluster. I also couldn't confirm the exact retention path in the code without the source or a heap dump. If you point me at the repo, I can find the cache.

@@ -1,0 +1,19 @@
+**Root cause: `checkout` has an unbounded in-memory cache, and it OOMs about once a minute.**
+
+What the evidence shows:
+- The pod is `OOMKilled` (exit 137) against its 384Mi limit. Memory climbs steadily at about 6 MiB/s, from 16 MiB to the limit in roughly 65 seconds.
+- lastwords caught a heap snapshot just before a kill. 99% of the heap is `byte[]`: about 2,900 × 64 KB arrays, each held by a `CheckoutService$CartSnapshot`.
+- I pulled the class files out of the container and disassembled them (there's no source here). `SessionCache` is a plain `ConcurrentHashMap<String, CartSnapshot>` with only `put()` and `size()`. Nothing ever removes entries. The main loop adds 10 snapshots, each with a new session ID and a 64 KB payload, every 100 ms. That's 6.25 MiB/s and matches the growth rate exactly.
+
+**What to change in code (`CheckoutService.java`, class `SessionCache`):**
+1. Make the cache evict entries. Either replace the map with Caffeine:
+   ```java
+   Caffeine.newBuilder().maximumSize(N).expireAfterWrite(Duration.ofMinutes(M)).build()
+   ```
+   or add a TTL sweep based on `CartSnapshot.createdAt` plus a size cap.
+2. Remove a session's entry when its checkout completes or the session ends.
+3. If the 64 KB payload doesn't need to stay in memory, keep a smaller form (or just a reference) instead of the raw bytes.
+
+**Config fix to ship alongside it:** `JAVA_TOOL_OPTIONS` sets `-Xmx1g` but the container limit is 384Mi. The JVM thinks it has room to grow, so the kernel kills it before it ever comes under GC pressure or throws a Java `OutOfMemoryError`. Replace `-Xmx1g` with `-XX:MaxRAMPercentage=75`. On its own that won't stop the leak, and raising the memory limit would only delay each crash.
+
+`billing-api` in the same namespace is also OOMKilling (256Mi limit, growing about 5 MiB/s). That's a separate problem. I can look at it with `kubectl lastwords show 20261103T174555Z-1881ef` if you want.

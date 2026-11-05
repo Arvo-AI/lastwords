@@ -1,0 +1,21 @@
+**Root cause: a memory leak in `billing-api`. It isn't a probe or config problem.** The container gets OOMKilled (exit 137) at its 256Mi limit about every 70–80s, which puts it in CrashLoopBackOff.
+
+**Evidence** (live heap profile from the pod's pprof port, 6060):
+- About 100% of heap in use comes from one allocation site, `main.renderInvoice` at `/src/main.go:29`, called from the loop in `main.main` at `/src/main.go:50`.
+- Each invoice allocates 128 KiB (24,117,248 B / 184 objects), and those buffers are never freed. `HeapAlloc` (255.8 MB) ≈ `TotalAlloc` (256.0 MB), so the GC reclaims almost nothing.
+- The numbers match the logs: about 2,000 invoices × 128 KiB ≈ 250 MiB, which is the limit. Every crash happens right after "rendered 2000 invoices". Growth is a steady ~5 MiB/s.
+
+**What to change in the code:**
+`renderInvoice` (main.go:29) allocates a 128 KiB buffer per invoice, and something keeps a reference to it. That's most likely an append to a package-level slice, map or cache, or the caller at line 50 collecting the results. To fix it:
+1. Stop holding the rendered buffers. Write or send each invoice and drop the reference, rather than collecting them in a global or long-lived slice or map.
+2. If you need a cache, put a bound on it (LRU or TTL), or reuse buffers with `sync.Pool` / `buf.Reset()`.
+3. Don't keep sub-slices of the big buffer either (`buf[:n]` keeps the whole 128 KiB alive). Copy out just what you need.
+
+I couldn't see the source, so I don't know exactly which line keeps the reference. Look at main.go:29 and wherever line 50 stores its result.
+
+**Mitigation until the fix ships:** raising the memory limit only delays the crash, because growth is unbounded. Rolling back to a version without the leak, if one exists, is the real stopgap.
+
+**Side notes:**
+- The pod's Image ID resolves to `lastwords-demo/leaky-go`, not `storefront/billing`. Check that the 1.4.2 tag points to the image you expect.
+- `checkout` is also crash-looping with OOMKilled at 384Mi. That's a separate issue.
+- The `lastwords` snapshots can't be read because its service account lacks RBAC on secret `lastwords/lastwords-api`. The fix is to bind the `lastwords-reader` Role.

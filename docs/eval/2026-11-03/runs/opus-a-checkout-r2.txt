@@ -1,0 +1,23 @@
+## Root cause: unbounded in-memory session cache (a memory leak)
+
+The pod is being **OOMKilled** (limit 384Mi, 3 restarts in about 5 minutes). Image 2.8.0 has no source in it, so I copied the `.class` files out of the container and disassembled them. In `CheckoutService.main`:
+
+- Each checkout makes a `CartSnapshot` with a **64 KB `byte[]` payload** and a **new, unique session ID** built from a counter that keeps going up.
+- It stores it with `SessionCache.put()`, which writes into a `ConcurrentHashMap`.
+- **Nothing ever removes entries.** There's no remove, no TTL, no size cap. Because every key is new, the map grows forever.
+
+The math matches the logs. Memory grows by about 64 MB per 1000 checkouts. The last log line before each kill is "handled 4000 checkouts", which is about 256 MB of payloads, plus JVM overhead, which reaches 384Mi.
+
+**What makes it worse:** the image sets `JAVA_TOOL_OPTIONS=-Xmx1g`, which is above the 384Mi container limit. So the JVM never hits its own heap limit or garbage-collects under pressure. The kernel kills the container first, with no Java `OutOfMemoryError` or heap dump to show what happened.
+
+## What to change
+
+1. **Fix the leak in `SessionCache`** (the main fix):
+   - Bound it and expire entries. For example, use Caffeine: `Caffeine.newBuilder().maximumSize(N).expireAfterWrite(Duration.ofMinutes(30)).build()`. Or use a `LinkedHashMap` with `removeEldestEntry`, plus a sweep that removes entries by `createdAt`.
+   - Also remove the entry when a checkout completes.
+   - If you don't need the cart payload after the checkout, don't keep it at all.
+2. **Fix the heap flag in the Dockerfile:** replace `-Xmx1g` with `-XX:MaxRAMPercentage=75`, so the heap scales to the container limit. Add `-XX:+ExitOnOutOfMemoryError -XX:+HeapDumpOnOutOfMemoryError` so any future leak shows up clearly.
+
+**Stopgap while the fix ships:** raising the memory limit only delays the crash, because the cache still grows forever. To buy time, you can lower `REQUESTS_PER_SECOND` (default 100) or accept the periodic restarts.
+
+Separately, `billing-api` has also restarted 3 times. I didn't look into it.

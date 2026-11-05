@@ -1,0 +1,4 @@
+{
+  "checkout": "I'm on call. In our EKS cluster the `checkout` service (namespace `storefront`) keeps restarting. kubectl is set up for you (read-only, exec allowed). Find the root cause and tell me what to change in the code. Be concise.",
+  "billing":  "I'm on call. In our EKS cluster the `billing-api` service (namespace `storefront`) keeps restarting. kubectl is set up for you (read-only, exec allowed). Find the root cause and tell me what to change in the code. Be concise."
+}

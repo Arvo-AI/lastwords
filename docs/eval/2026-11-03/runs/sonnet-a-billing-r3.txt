@@ -1,0 +1,17 @@
+I can't tell you the exact line to change, because the source isn't in this environment and the container keeps dying before I can exec into it. The cause is clear, though.
+
+**Root cause:** The container is being OOM-killed (exit 137, `OOMKilled`, 5 restarts). Its memory limit is 256Mi, and it runs out of memory about 70 seconds after each start.
+
+**Evidence from the logs:**
+- After a 20s warm-up, the app logs `rendered N invoices` every ~13s. The count goes 0, 500, 1000, 1500, 2000 and keeps climbing until the kill.
+- Memory grows with every invoice rendered and is never released. That points to invoices being accumulated in memory instead of streamed.
+- The deployment has no env vars or volumes. This looks like a leak or unbounded buffer in the app (v1.4.2), not a config problem.
+
+**What to change in the code** (look in the invoice render and warm-up path):
+1. Stop holding rendered invoices in a package-level slice, map or cache. Write each one out as it's rendered. If you need a cache, bound it with an LRU or TTL.
+2. Render in bounded batches, for example 500 at a time, and release each batch.
+3. Check for per-invoice buffers or PDF/template objects that aren't released or reused.
+
+**Mitigation while you fix it:** raise the memory limit and request, for example `kubectl -n storefront set resources deploy/billing-api --limits=memory=1Gi --requests=memory=512Mi`. That only delays the OOM if the growth is unbounded. I haven't run it, since the access I have is read-only.
+
+If you give me the repo or its path, I can find the exact allocation.

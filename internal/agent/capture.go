@@ -525,7 +525,8 @@ func (a *Agent) captureDeath(ctx context.Context, ev k8s.TerminationEvent) {
 	if ev.Init {
 		c.Findings = append(c.Findings, "This is an init container: the pod's main containers do not start until it exits 0, so the whole pod is down while it fails.")
 	}
-	c.Findings = append(c.Findings, deathFindings(c, samples, limit, logText, snapshots)...)
+	budgetSpent := a.budgetSpent("pressure", ev.Pod.Namespace+"/"+ev.Pod.Name+"/"+ev.Container, time.Now())
+	c.Findings = append(c.Findings, deathFindings(c, samples, limit, logText, snapshots, budgetSpent)...)
 	if kind == store.KindOOMKill {
 		c.Findings = append(c.Findings, a.snapshotFindings(c.Related)...)
 	}
@@ -540,7 +541,7 @@ func (a *Agent) captureDeath(ctx context.Context, ev k8s.TerminationEvent) {
 	}
 }
 
-func deathFindings(c *store.Capture, samples []Sample, limit uint64, logText string, snapshots int) []string {
+func deathFindings(c *store.Capture, samples []Sample, limit uint64, logText string, snapshots int, budgetSpent bool) []string {
 	var out []string
 	t := c.Termination
 	if t.Reason == "OOMKilled" {
@@ -564,6 +565,8 @@ func deathFindings(c *store.Capture, samples []Sample, limit uint64, logText str
 				verb = "was"
 			}
 			out = append(out, fmt.Sprintf("%s of what was using the memory %s taken before the kill; see Related captures.", plural(snapshots, "snapshot"), verb))
+		} else if budgetSpent {
+			out = append(out, fmt.Sprintf("No snapshot was taken before this kill: earlier restarts already used this container's budget of %d snapshots in %s. The timeline and logs are still saved.", maxCrashCaptures, crashWindow))
 		} else {
 			out = append(out, "No snapshot was taken before the kill: memory went from below the threshold to the limit between samples, or the agent was not watching yet. The timeline and logs are still saved.")
 		}

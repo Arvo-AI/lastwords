@@ -1,0 +1,27 @@
+## Root cause: unbounded in-memory session cache in `checkout:2.8.0`
+
+The container is being **OOMKilled** (exit 137) about 65s after each start. Memory grows at around 6.5 MiB/s, which is the rate lastwords reported.
+
+I decompiled the classes in the image (`/app/com/example/checkout/`) since there's no source in the container:
+
+- `CheckoutService.main` creates a new 64 KiB `CartSnapshot` (with `byte[65536]`) under a unique session ID. It does this `REQUESTS_PER_SECOND/10` times every 100ms, so about 100/s.
+- `SessionCache.put()` stores each snapshot in a plain `ConcurrentHashMap`. **Nothing ever removes them.** There's no TTL, no size cap, and the `createdAt` field is never read.
+- 100/s × 64 KiB ≈ 6.4 MiB/s, which exactly matches the observed growth.
+
+A JVM setting makes it worse: `JAVA_TOOL_OPTIONS=-Xmx1g` (baked into the image, not set in the Deployment) is larger than the pod's **384Mi** limit. So the JVM never comes under GC pressure or throws an `OutOfMemoryError`. The kernel kills it first.
+
+## What to change
+
+1. **Bound the cache (the actual fix).** In `CheckoutService.SessionCache`, evict by age and/or size. For example, use Caffeine:
+   ```java
+   private final Cache<String, CartSnapshot> bySession = Caffeine.newBuilder()
+       .maximumSize(2_000)                       // 2k × 64KiB ≈ 128MiB worst case
+       .expireAfterWrite(Duration.ofMinutes(15))
+       .build();
+   ```
+   Or, with no new dependency, remove entries where `now - createdAt > TTL` on put or on a scheduled sweep, plus a hard size cap. Also remove the session when checkout completes. Better still, store sessions in the existing `cart-redis` with a TTL instead of on the heap.
+2. **Fix the heap setting.** Remove `-Xmx1g` from the image and use `-XX:MaxRAMPercentage=75`, so heap size follows the container limit.
+
+Bumping the memory limit alone only buys a few extra seconds per restart, because the growth is unbounded.
+
+**Side note:** `billing-api` in the same namespace is also OOMKilling (256Mi limit, about 5 MiB/s growth). I didn't investigate it, so it could be a separate problem. I copied the extracted `.class` files to `./classes/`.

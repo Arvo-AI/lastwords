@@ -1,0 +1,22 @@
+## Root cause: a memory leak in `renderInvoice`, so the pod gets OOMKilled
+
+- **What's happening:** the container is OOMKilled (exit 137) at its 256Mi limit about 70s after each start. Memory climbs steadily at roughly 2–5 MiB/s with no plateau. That's a leak, not a load spike.
+- **Where the memory goes** (lastwords heap snapshot taken at 97% of the limit): live Go heap is 99.4 MiB, and **98.9 MiB of it is held by one allocation in `main.renderInvoice` at `/src/main.go:29`**. It's called from the loop in `main.main` (which sleeps at `main.go:54`). The logs show "rendered N invoices" rising by 500 every ~12s right up to the kill.
+- **Diagnosis:** whatever `renderInvoice` allocates on line 29 is being kept somewhere long-lived after each render. Usually that's a package-level slice, map or cache that gets appended to and never trimmed.
+
+## What to change in the code
+
+1. **Fix `main.go:29`:** stop keeping each rendered invoice after it's used. Either:
+   - drop the append to the global slice/map, or
+   - cap it: use a bounded LRU, or delete/reset entries after they're sent.
+   
+   Each render should leave nothing reachable behind it.
+2. **Optional safety net:** set the env var `GOMEMLIMIT=230MiB` (about 90% of the limit). The GC currently lets the process grow to about 2× the live heap (248 MiB used vs 99 MiB live). This only delays the OOM; it doesn't fix the leak.
+
+Don't just raise the memory limit. With steady growth it only pushes the kill back.
+
+## Caveats
+
+- **I couldn't see the source.** The image has no shell, and I don't have Go installed locally to read the full pprof profile. So I can't tell you exactly what line 29 does; check it in your repo.
+- **Possible image mix-up:** the pod spec says `storefront/billing:1.4.2`, but the image that's actually running comes from `lastwords-demo/leaky-go` in ECR. Make sure that tag points where you expect, or this may be a demo image.
+- **`checkout` has the same pattern:** it's also OOMKilling on a similar cycle (limit 384Mi). `kubectl lastwords list` shows its captures.

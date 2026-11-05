@@ -1,0 +1,19 @@
+**Root cause:** `billing-api` is being OOMKilled (exit 137, 256Mi limit). It has a memory leak in the Go code, not a limit that's set too low.
+
+**Evidence**
+- Memory climbs steadily from about 1 MiB to 256 MiB in roughly 70s, at about 5 MiB/s, then the pod is killed. Each restart repeats this.
+- All of the growth is anonymous memory (heap), so it isn't page cache.
+- The goroutine dump shows only 4 goroutines, so it isn't a goroutine leak.
+- The heap profile from lastwords points at `main.renderInvoice` (`/src/main.go:29`), which holds 51.4 MiB of the 51.9 MiB live Go heap. The logs show it rendering about 500 invoices every 13s.
+- The capture shows total container memory at 183.7 MiB when the live heap was 51.9 MiB. The Go GC lets the heap grow to roughly twice the live data before collecting (GOGC=100).
+
+**What to change**
+1. In `renderInvoice` (`main.go:29`), find what it retains per invoice and stop retaining it. I couldn't read the source. The pod has no `/src`, and the image tag doesn't match the code you'd have. Likely culprits are an append to a package-level slice or map, a cache with no eviction, or buffers kept after rendering. Render each invoice, write it out, and drop the reference. If a cache is intended, cap its size or add eviction.
+2. As a stopgap, set `GOMEMLIMIT` to about 230MiB (roughly 90% of the limit) so the GC works harder before the kernel kills the process. This only delays the OOM and doesn't fix the leak.
+3. Don't just raise the memory limit. The growth is linear, so a higher limit only delays the kill.
+
+**Other things I noticed**
+- `checkout` in the same namespace is also being OOMKilled, at 384Mi with similar growth. That may be a separate leak or a shared dependency.
+- The pod's `Image` is `storefront/billing:1.4.2`, but its `Image ID` and the lastwords capture point at `lastwords-demo/leaky-go`. Check that the deployed image is what you expect.
+
+I wrote the downloaded evidence to `/tmp/lw`. I didn't change anything on the cluster.

@@ -1,0 +1,21 @@
+**Root cause:** `checkout:2.8.0` has a memory leak in `CheckoutService`. A `SessionCache` holds `CartSnapshot` objects that are never evicted. The JVM heap limit is also set higher than the container limit, so the kernel kills the container before Java can throw an `OutOfMemoryError`.
+
+**Evidence** (from `kubectl lastwords show` on the OOM kills and the pre-kill snapshots):
+- Memory climbs steadily at about 5 MiB/s, from 16 MiB to about 310 MiB in about 1 minute, then the container is OOMKilled (exit 137). This repeats on every restart.
+- 99% of the memory is anonymous heap, not page cache. `byte[]` is about 100% of the heap (259 MiB in 16k instances).
+- `CheckoutService$CartSnapshot` instance counts keep growing: 2,900 in one snapshot and 4,140 in a later one. There is a single `CheckoutService$SessionCache`. The `CartSnapshot` objects are small themselves, so the `byte[]` they reference accounts for the memory.
+- The logs show "handled N checkouts" up to 4000, with no errors before the kill.
+- The JVM runs with `-Xmx1g` but the container limit is 384 MiB.
+
+**What to change in the code:**
+1. Bound `SessionCache`. Use a size limit plus a TTL, for example Caffeine with `maximumSize(...)` and `expireAfterWrite(...)`, or a `LinkedHashMap` with `removeEldestEntry`.
+2. Evict the entry when a checkout completes or its session ends.
+3. Stop `CartSnapshot` from holding large `byte[]` payloads such as a serialized cart. Store IDs or a compact form instead.
+
+**Config fix:** set `-Xmx` to about 256m, or use `-XX:MaxRAMPercentage=65`, so it fits under the 384 MiB limit. Raising the limit would only delay the kill.
+
+**Possible rollback:** if 2.8.0 is a new release, rolling back to the previous version would stop the restarts now.
+
+I didn't have the source here, so I can't point to exact lines. Look for where `SessionCache` is written in `CheckoutService`.
+
+`billing-api` in the same namespace is also being OOMKilled (256 MiB limit), with a similar growth rate. It may share a library or have a related cause.

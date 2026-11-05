@@ -1,0 +1,17 @@
+**Root cause:** `checkout` 2.8.0 leaks memory in `CheckoutService`, and the JVM heap cap is set above the container limit, so the pod is OOMKilled instead of garbage-collecting.
+
+**Evidence** (from `kubectl lastwords show 20261103T174438Z-c01d48` and the pod spec):
+- Every restart is an OOMKill (exit 137) at the 384Mi limit. Memory climbs steadily at about 5 MiB/s, from 17 MiB to 312 MiB in about 60s, and then the pod is killed.
+- The memory is anonymous, so it is in the heap and not page cache. About 259 MiB is `byte[]`, which is 100% of the heap at that point.
+- The heap holds 4140 `CheckoutService$CartSnapshot` objects and one `CheckoutService$SessionCache`. That works out to roughly 64 KiB of `byte[]` per snapshot, and the log shows about 1000 checkouts per step, so snapshots are never released.
+- The pod has `JAVA_TOOL_OPTIONS=-Xmx1g`, but the container limit is 384Mi. The JVM thinks it can use 1 GiB, so it never collects hard enough before the kernel kills it.
+
+**What to change:**
+1. **Code:** In `CheckoutService`, `SessionCache` keeps every `CartSnapshot` forever, and each snapshot holds a large `byte[]`. Bound it with a max size and an eviction policy (for example Caffeine `maximumSize` plus `expireAfterWrite`). Also remove entries when a checkout completes. Better still, don't keep the payload bytes in the snapshot.
+2. **Config:** Make `-Xmx` fit inside the limit. For example, use `-XX:MaxRAMPercentage=70` instead of `-Xmx1g`, or set `-Xmx256m` for a 384Mi limit. This leaves room for non-heap memory, since NMT is also enabled.
+
+**Stopgap:** Raising the memory limit would only delay the kills. I'd roll back to the previous image if 2.7.x didn't have this behavior. I didn't check that.
+
+I couldn't open the source because it isn't in this working directory, so the exact lines in `CheckoutService` still need confirming.
+
+`billing-api` in the same namespace is also being OOMKilled (256Mi limit, growing about 5 MiB/s). It may be a separate leak, or it may share a cause with `checkout`, such as a shared library or a common upstream.

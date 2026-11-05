@@ -1,0 +1,16 @@
+I found the immediate cause, but I couldn't get far enough to name the exact line of code to change.
+
+**What's happening:** `billing-api` is being **OOMKilled** (exit code 137, 256Mi limit) and is now in CrashLoopBackOff after 5 restarts. Each run follows the same pattern:
+- Memory climbs steadily at about **5 MiB/s** from startup and hits the limit in about 70s.
+- The climb tracks the work it does. The logs show "rendered 0 / 500 / 1000 / 1500 invoices" and then the kill, which works out to roughly **130 KB kept per invoice** that is never freed.
+- The image is actually `lastwords-demo/leaky-go`, not a normal billing build. The deployment tag says `storefront/billing:1.4.2`, but the image ID the pod is running is `lastwords-demo/leaky-go@sha256:4204cb…`. Check whether the right image was deployed.
+
+**Likely code issue (inferred, not confirmed):** something in the Go invoice-render loop keeps every rendered invoice. Typical culprits are a package-level slice or map that each invoice gets appended to, or a cache with no eviction. Look in the render path for anything that grows per invoice and is never trimmed. Raising the memory limit would only delay the crash.
+
+**Why I couldn't confirm it:**
+- The `lastwords` agent captured heap and goroutine snapshots before each kill, but reading them fails. The agent's service account can't read secret `lastwords/lastwords-api` because the `lastwords-reader` Role isn't bound. I didn't try to get around that.
+- The container has no shell or tools, nothing is listening on pprof (6060), the app port (8080) refuses connections, and `pods/proxy` is forbidden for my account.
+
+**To find the exact line, pick one:**
+1. Have a cluster admin bind the `lastwords-reader` Role to `lastwords:lastwords`. Then run `lastwords show 20261103T174719Z-8021cf` (or a newer capture ID) from the agent pod to see the heap snapshot.
+2. Send me the source for the invoice-render loop and I'll find the leak.

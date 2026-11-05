@@ -1,0 +1,22 @@
+**Root cause:** `billing-api` is being OOMKilled (exit 137) against its 256Mi memory limit. The cause is a memory leak in the app, not a limit that's set too low.
+
+**Evidence**
+- The last container state is `OOMKilled`, with 5 restarts in about 10 minutes.
+- Memory climbs at a steady ~5 MiB/s. Events show 71% of the limit, then 97%, then the kill, which takes about 70 seconds from start.
+- The previous container's logs show it rendering invoices (500 about every 12s, 2,000 by the time it died) and never freeing anything. The leak grows with the number of invoices rendered.
+- The pod runs image `storefront/billing:1.4.2`. Its Image ID resolves to `lastwords-demo/leaky-go`. Check that this is the image you meant to deploy.
+
+**What to change in the code**
+I couldn't see the source. This directory is empty, and `kubectl exec` failed because the container was between restarts. So I can't name the file or line. In the invoice-rendering path, look for state that grows with every invoice and is never released:
+- a package-level map, slice or cache that is appended to and never evicted
+- buffers or goroutines created per invoice and never released
+- unclosed response bodies or files
+- a `sync.Pool` or channel that is never drained
+
+Add eviction or a size bound, or release the per-invoice resources. A heap profile will show the exact allocation site. Add `net/http/pprof` and capture `/debug/pprof/heap` shortly after startup.
+
+**Mitigation now**
+Raising the memory limit won't fix it, because the growth is linear. It would only delay each kill. Rolling back to the last good image tag is the quickest fix, if there is one. This is revision 1, so there's no previous rollout to undo.
+
+**Something I couldn't do**
+The events point to `kubectl lastwords show <id>` snapshots, but that plugin isn't installed here. Those snapshots may have the heap details. If you have the plugin, run `kubectl lastwords show 20261103T174441Z-7a63ee`. If you paste the output, I'll narrow it down.
