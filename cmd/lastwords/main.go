@@ -416,8 +416,12 @@ func runTop(args []string) error {
 func runMCP(args []string) error {
 	fs := flag.NewFlagSet("mcp", flag.ExitOnError)
 	mk := clientFlags(fs)
+	addr := fs.String("http", "", "serve MCP over streamable HTTP on this address (e.g. :8090) instead of stdio; needs LASTWORDS_MCP_TOKEN")
 	parse(fs, args)
 	ctx, cancel := signalContext()
 	defer cancel()
+	if *addr != "" {
+		return mcpserver.RunHTTP(ctx, *addr, os.Getenv("LASTWORDS_MCP_TOKEN"), mk, agent.Version)
+	}
 	return mcpserver.Run(ctx, mk, agent.Version)
 }

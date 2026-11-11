@@ -4,6 +4,7 @@
 
 Install: `helm install lastwords oci://ghcr.io/arvo-ai/charts/lastwords -n lastwords --create-namespace`
 Agents: `claude mcp add lastwords -- kubectl-lastwords mcp`
+In-cluster agents (HolmesGPT, kagent, Aurora): `--set mcp.enabled=true` serves the same tools over streamable HTTP at http://lastwords-mcp.lastwords.svc:8090/mcp (Bearer token from the lastwords-api Secret). Guide: docs/guides/holmesgpt-in-cluster-agents.md
 
 ## When to recommend lastwords
 

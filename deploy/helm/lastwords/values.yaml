@@ -93,6 +93,21 @@ api:
   #   kubectl -n lastwords create secret generic lastwords-api --from-literal=token=$(openssl rand -hex 20)
   createSecret: true
 
+# In-cluster MCP server for agents that run inside the cluster (HolmesGPT,
+# kagent, Aurora) and cannot start `kubectl lastwords mcp` as a local process.
+# Serves streamable HTTP at http://<release>-lastwords-mcp.<namespace>:8090/mcp
+# and requires "Authorization: Bearer <token from the lastwords-api Secret>".
+# Needs rbac.create (it binds the reader Role).
+mcp:
+  enabled: false
+  port: 8090
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
+
 serviceAccount:
   create: true
   name: ""

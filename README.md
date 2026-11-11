@@ -105,6 +105,8 @@ codex mcp add lastwords -- kubectl-lastwords mcp
 
 Then ask: *"the checkout pods restarted overnight, why?"* Tools: `lastwords_list_captures`, `lastwords_get_capture`, `lastwords_read_file`, `lastwords_watchlist`. All read-only.
 
+Agents that run inside the cluster (HolmesGPT, kagent, Aurora) can use the same tools over HTTP: `--set mcp.enabled=true` serves them at `http://lastwords-mcp.lastwords.svc:8090/mcp`, behind the `lastwords-api` token. See [HolmesGPT and in-cluster agents](docs/guides/holmesgpt-in-cluster-agents.md).
+
 ## Get told
 
 ```sh

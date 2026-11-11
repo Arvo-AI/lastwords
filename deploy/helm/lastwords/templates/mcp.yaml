@@ -1,0 +1,103 @@
+{{- if .Values.mcp.enabled }}
+{{- /* The MCP pod must not carry app.kubernetes.io/name=lastwords: the client
+  finds agents by that label, and the agents' Service selects on it. */}}
+{{- $name := printf "%s-mcp" (include "lastwords.fullname" .) | trunc 63 | trimSuffix "-" }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "lastwords.labels" . | replace "app.kubernetes.io/name: lastwords" "app.kubernetes.io/name: lastwords-mcp" | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "lastwords.labels" . | replace "app.kubernetes.io/name: lastwords" "app.kubernetes.io/name: lastwords-mcp" | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "lastwords.fullname" . }}-reader
+subjects:
+  - kind: ServiceAccount
+    name: {{ $name }}
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "lastwords.labels" . | replace "app.kubernetes.io/name: lastwords" "app.kubernetes.io/name: lastwords-mcp" | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: lastwords-mcp
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: lastwords-mcp
+        app.kubernetes.io/instance: {{ .Release.Name }}
+      annotations:
+        lastwords.dev/ignore: "true"
+    spec:
+      serviceAccountName: {{ $name }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mcp
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - mcp
+            - --http=:{{ .Values.mcp.port }}
+            - --lastwords-namespace={{ .Release.Namespace }}
+          env:
+            - name: LASTWORDS_MCP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: lastwords-api
+                  key: token
+          ports:
+            - name: mcp
+              containerPort: {{ .Values.mcp.port }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: mcp
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: mcp
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources: {{- toYaml .Values.mcp.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "lastwords.labels" . | replace "app.kubernetes.io/name: lastwords" "app.kubernetes.io/name: lastwords-mcp" | nindent 4 }}
+spec:
+  selector:
+    app.kubernetes.io/name: lastwords-mcp
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  ports:
+    - name: mcp
+      port: {{ .Values.mcp.port }}
+      targetPort: mcp
+{{- end }}
